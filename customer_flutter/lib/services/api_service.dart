@@ -6,7 +6,8 @@ import 'package:crypto/crypto.dart';
 
 class ApiService {
   // Change this to your backend URL
-  static const String baseUrl = 'http://10.0.2.2:5000/api'; // Android emulator
+  static const String baseUrl = 'https://dukasell.vercel.app/api'; // Production Vercel
+  // static const String baseUrl = 'http://10.0.2.2:5000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:5000/api'; // iOS simulator
 
   String? _authToken;
@@ -39,6 +40,27 @@ class ApiService {
     _authToken = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
+  }
+
+  // Test internet connection
+  Future<Map<String, dynamic>> testConnection() async {
+    try {
+      // Try to reach a reliable endpoint (Google DNS or your backend)
+      final response = await http.get(
+        Uri.parse('https://www.google.com'),
+        headers: {'User-Agent': 'DukaSell-App/1.0'},
+      ).timeout(const Duration(seconds: 5));
+      
+      return {
+        'success': response.statusCode == 200,
+        'status_code': response.statusCode,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
   }
 
   // Get headers with auth token

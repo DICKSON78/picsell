@@ -66,21 +66,28 @@ class ClickPesaService {
         currency: 'TZS',
         orderReference,
         phoneNumber,
-        fetchSenderDetails: false,
         checksum: this.generateChecksum({ amount, currency: 'TZS', orderReference, phoneNumber })
       };
 
       const response = await axios.post(`${this.baseUrl}/payments/preview-ussd-push-request`, data, {
         headers: {
-          'Authorization': token,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      return response.data;
+      // Check if response has the expected structure
+      if (response.data) {
+        return {
+          success: true,
+          ...response.data
+        };
+      } else {
+        throw new Error('Invalid response format from ClickPesa');
+      }
     } catch (error) {
       console.error('ClickPesa Preview Error:', error.response?.data || error.message);
-      throw new Error('Failed to preview payment');
+      throw new Error('Failed to preview payment: ' + (error.response?.data?.message || error.message));
     }
   }
 
@@ -93,21 +100,35 @@ class ClickPesaService {
         currency: 'TZS',
         orderReference,
         phoneNumber,
-        fetchSenderDetails: false,
         checksum: this.generateChecksum({ amount, currency: 'TZS', orderReference, phoneNumber })
       };
 
       const response = await axios.post(`${this.baseUrl}/payments/initiate-ussd-push-request`, data, {
         headers: {
-          'Authorization': token,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      return response.data;
+      // Check if response has the expected structure
+      if (response.data && response.data.id) {
+        return {
+          success: true,
+          paymentId: response.data.id,
+          status: response.data.status,
+          channel: response.data.channel,
+          orderReference: response.data.orderReference,
+          collectedAmount: response.data.collectedAmount,
+          collectedCurrency: response.data.collectedCurrency,
+          createdAt: response.data.createdAt,
+          clientId: response.data.clientId
+        };
+      } else {
+        throw new Error('Invalid response format from ClickPesa');
+      }
     } catch (error) {
       console.error('ClickPesa Payment Error:', error.response?.data || error.message);
-      throw new Error('Failed to initiate payment');
+      throw new Error('Failed to initiate payment: ' + (error.response?.data?.message || error.message));
     }
   }
 

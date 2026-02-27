@@ -1,6 +1,7 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const clickpesaService = require('../services/clickpesaService');
 
 const creditsController = {
   // Get user's credit balance
@@ -258,6 +259,24 @@ const creditsController = {
           });
         }
 
+        // Initiate actual USSD push payment
+        const payment = await clickpesaService.initiatePayment(
+          phoneNumber,
+          selectedPackage.price,
+          orderReference
+        );
+
+        if (!payment.success) {
+          transaction.status = 'failed';
+          transaction.error = payment.error || 'Mobile money payment initiation failed';
+          await transaction.save();
+          
+          return res.status(400).json({ 
+            error: payment.error || 'Failed to initiate payment',
+            details: payment 
+          });
+        }
+
         res.json({
           success: true,
           orderReference,
@@ -265,6 +284,9 @@ const creditsController = {
           credits: selectedPackage.credits,
           currency: 'TZS',
           paymentMethod: 'mobile_money',
+          paymentInitiated: true,
+          paymentId: payment.paymentId,
+          message: 'USSD push sent to your phone. Please complete the payment.',
           preview: {
             availableMethods: preview.activeMethods || [],
             fee: preview.fee || 0,

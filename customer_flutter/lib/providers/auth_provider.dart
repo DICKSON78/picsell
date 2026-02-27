@@ -18,6 +18,12 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _user != null;
   String? get error => _error;
   int get credits => _user?.credits ?? 0;
+  
+  // Get current user (for compatibility)
+  UserModel? get currentUser => _user;
+  
+  // Get user ID (for compatibility)
+  String? get uid => _user?.id;
 
   // Initialize - check if user is already logged in
   Future<void> initializeAuth() async {

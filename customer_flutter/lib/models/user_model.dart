@@ -11,6 +11,9 @@ class UserModel {
   final bool isActive;
   final DateTime createdAt;
   final DateTime? lastLogin;
+  final String? phoneNumber;
+  final bool? phoneVerified;
+  final String? phoneUpdatedAt;
 
   UserModel({
     required this.id,
@@ -23,6 +26,9 @@ class UserModel {
     this.isActive = true,
     required this.createdAt,
     this.lastLogin,
+    this.phoneNumber,
+    this.phoneVerified,
+    this.phoneUpdatedAt,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
@@ -38,6 +44,9 @@ class UserModel {
       isActive: data['isActive'] ?? true,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastLogin: (data['lastLogin'] as Timestamp?)?.toDate(),
+      phoneNumber: data['phoneNumber'],
+      phoneVerified: data['phoneVerified'],
+      phoneUpdatedAt: data['phoneUpdatedAt'],
     );
   }
 
@@ -52,6 +61,9 @@ class UserModel {
       'isActive': isActive,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastLogin': lastLogin != null ? Timestamp.fromDate(lastLogin!) : null,
+      'phoneNumber': phoneNumber,
+      'phoneVerified': phoneVerified,
+      'phoneUpdatedAt': phoneUpdatedAt,
     };
   }
 

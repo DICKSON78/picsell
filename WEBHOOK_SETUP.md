@@ -4,7 +4,7 @@
 
 ### Production URL (Recommended)
 ```
-https://dukasell.onrender.com/webhook/clickpesa
+https://dukasell.vercel.app/webhook/clickpesa
 ```
 
 ### Local Development URL
@@ -28,7 +28,7 @@ https://your-ngrok-id.ngrok.io/webhook/clickpesa
 ### 2. Configure Webhook
 1. Navigate to **Settings** → **Webhooks**
 2. Click **Add New Webhook**
-3. Enter webhook URL: `https://dukasell.onrender.com/webhook/clickpesa`
+3. Enter webhook URL: `https://dukasell.vercel.app/webhook/clickpesa`
 4. Select events:
    - ✅ Payment Success
    - ✅ Payment Failed
@@ -47,20 +47,20 @@ Add to your `.env` file:
 ```env
 # Webhook Configuration
 WEBHOOK_SECRET=your_webhook_secret_here
-WEBHOOK_URL=https://dukasell.onrender.com/webhook/clickpesa
+WEBHOOK_URL=https://dukasell.vercel.app/webhook/clickpesa
 ```
 
 ## 🚀 Deployment Steps
 
-### 1. Deploy to Render
+### 1. Deploy to Vercel
 ```bash
 # Push to GitHub
 git add .
 git commit -m "Add ClickPesa webhook support"
 git push origin main
 
-# Deploy to Render
-# Your app will be available at: https://dukasell.onrender.com
+# Deploy to Vercel
+# Your app will be available at: https://dukasell.vercel.app
 ```
 
 ### 2. Update ClickPesa Merchant Portal

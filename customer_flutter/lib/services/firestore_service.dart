@@ -35,6 +35,24 @@ class FirestoreService {
     }
   }
 
+  // Get user data (for compatibility)
+  Future<Map<String, dynamic>?> getUserData(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (doc.exists) {
+        return doc.data() as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Update user data (for phone number saving)
+  Future<void> updateUserData(String userId, Map<String, dynamic> data) async {
+    await _firestore.collection('users').doc(userId).update(data);
+  }
+
   // Stream user data (realtime updates)
   Stream<UserModel?> streamUser(String userId) {
     return _firestore.collection('users').doc(userId).snapshots().map((doc) {
