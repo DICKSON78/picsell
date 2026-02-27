@@ -72,3 +72,4 @@ data/
 
 # Duplicate google-services files at root level
 /google-services*.json
+.vercel

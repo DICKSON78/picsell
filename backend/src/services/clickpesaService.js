@@ -24,6 +24,7 @@ class ClickPesaService {
       });
 
       if (response.data.success) {
+        // Token already includes "Bearer " prefix, so use it as is
         this.token = response.data.token;
         // Token expires in 1 hour (3600 seconds)
         this.tokenExpiry = Date.now() + 3600000;
@@ -46,15 +47,33 @@ class ClickPesaService {
 
   // Generate checksum for security
   generateChecksum(data) {
-    // Create checksum using API key (adjust based on ClickPesa requirements)
-    const stringToHash = Object.keys(data)
-      .sort()
-      .map(key => `${key}${data[key]}`)
-      .join('');
+    // Try using client ID as checksum key (common pattern)
+    const checksumKey = this.clientId;
     
-    return crypto.createHash('sha256')
-      .update(stringToHash + this.apiKey)
-      .digest('hex');
+    // Canonicalize the payload recursively for consistent ordering
+    const canonicalPayload = this.canonicalize(data);
+    
+    // Serialize the canonical payload
+    const payloadString = JSON.stringify(canonicalPayload);
+    
+    // Create HMAC with SHA256
+    const hmac = crypto.createHmac('sha256', checksumKey);
+    hmac.update(payloadString);
+    return hmac.digest('hex');
+  }
+
+  // Canonicalize object recursively
+  canonicalize(obj) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.canonicalize(item));
+    }
+    return Object.keys(obj)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = this.canonicalize(obj[key]);
+        return acc;
+      }, {});
   }
 
   // Preview USSD payment
@@ -71,7 +90,7 @@ class ClickPesaService {
 
       const response = await axios.post(`${this.baseUrl}/payments/preview-ussd-push-request`, data, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': token,
           'Content-Type': 'application/json'
         }
       });
@@ -105,7 +124,7 @@ class ClickPesaService {
 
       const response = await axios.post(`${this.baseUrl}/payments/initiate-ussd-push-request`, data, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': token,
           'Content-Type': 'application/json'
         }
       });

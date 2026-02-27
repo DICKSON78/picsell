@@ -1,13 +1,22 @@
 // Vercel Serverless Function for ClickPesa Webhook
-const mongoose = require('mongoose');
-const Transaction = require('../backend/src/models/Transaction');
-const User = require('../backend/src/models/User');
+const admin = require('firebase-admin');
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      clientId: process.env.FIREBASE_CLIENT_ID,
+      authUri: process.env.FIREBASE_AUTH_URI,
+      tokenUri: process.env.FIREBASE_TOKEN_URI,
+    }),
+  });
+}
+
+const db = admin.firestore();
 
 module.exports = async (req, res) => {
   // Only allow POST requests
@@ -75,22 +84,30 @@ async function handlePaymentReceived(data) {
   const { orderReference, status, amount, paymentMethod, customer, timestamp } = data;
   
   // Find pending transaction
-  const transaction = await Transaction.findOne({ orderReference, status: 'pending' });
+  const transactionRef = db.collection('transactions').where('orderReference', '==', orderReference).where('status', '==', 'pending');
+  const transactionSnapshot = await transactionRef.get();
   
-  if (transaction) {
+  if (!transactionSnapshot.empty) {
+    const transactionDoc = transactionSnapshot.docs[0];
+    const transaction = transactionDoc.data();
+    
     // Update transaction status
-    transaction.status = 'completed';
-    transaction.completedAt = new Date();
-    transaction.finalAmount = amount;
-    transaction.webhookData = { status, customer, timestamp };
-    await transaction.save();
+    await transactionDoc.ref.update({
+      status: 'completed',
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finalAmount: amount,
+      webhookData: { status, customer, timestamp }
+    });
 
     // Add credits to user
-    const user = await User.findById(transaction.userId);
-    if (user) {
-      user.credits += transaction.credits;
-      user.totalSpent += amount / 100; // Convert to TZS if needed
-      await user.save();
+    const userRef = db.collection('users').doc(transaction.userId);
+    const userDoc = await userRef.get();
+    
+    if (userDoc.exists) {
+      await userRef.update({
+        credits: admin.firestore.FieldValue.increment(transaction.credits),
+        totalSpent: admin.firestore.FieldValue.increment(amount / 100)
+      });
     }
 
     console.log('Payment received successfully:', orderReference);
@@ -102,13 +119,17 @@ async function handlePaymentFailed(data) {
   const { orderReference, status, amount, paymentMethod, customer, timestamp } = data;
   
   // Update transaction status to failed
-  const transaction = await Transaction.findOne({ orderReference, status: 'pending' });
+  const transactionRef = db.collection('transactions').where('orderReference', '==', orderReference).where('status', '==', 'pending');
+  const transactionSnapshot = await transactionRef.get();
   
-  if (transaction) {
-    transaction.status = 'failed';
-    transaction.error = 'Payment failed';
-    transaction.webhookData = { status, customer, timestamp };
-    await transaction.save();
+  if (!transactionSnapshot.empty) {
+    const transactionDoc = transactionSnapshot.docs[0];
+    
+    await transactionDoc.ref.update({
+      status: 'failed',
+      error: 'Payment failed',
+      webhookData: { status, customer, timestamp }
+    });
   }
   
   console.log('Payment failed:', orderReference);
@@ -119,14 +140,17 @@ async function handlePayoutInitiated(data) {
   const { orderReference, status, payout, timestamp } = data;
   
   // Find payout transaction
-  const transaction = await Transaction.findOne({ orderReference, type: 'payout', status: 'pending' });
+  const transactionRef = db.collection('transactions').where('orderReference', '==', orderReference).where('type', '==', 'payout').where('status', '==', 'pending');
+  const transactionSnapshot = await transactionRef.get();
   
-  if (transaction) {
-    // Update transaction status
-    transaction.status = 'processing';
-    transaction.payoutData = payout;
-    transaction.webhookData = { status, payout, timestamp };
-    await transaction.save();
+  if (!transactionSnapshot.empty) {
+    const transactionDoc = transactionSnapshot.docs[0];
+    
+    await transactionDoc.ref.update({
+      status: 'processing',
+      payoutData: payout,
+      webhookData: { status, payout, timestamp }
+    });
   }
 
   console.log('Payout initiated:', orderReference);
@@ -137,20 +161,27 @@ async function handlePayoutRefunded(data) {
   const { orderReference, status, payout, timestamp } = data;
   
   // Find payout transaction
-  const transaction = await Transaction.findOne({ orderReference, type: 'payout', status: 'processing' });
+  const transactionRef = db.collection('transactions').where('orderReference', '==', orderReference).where('type', '==', 'payout').where('status', '==', 'processing');
+  const transactionSnapshot = await transactionRef.get();
   
-  if (transaction) {
-    // Update transaction status
-    transaction.status = 'refunded';
-    transaction.payoutData = payout;
-    transaction.webhookData = { status, payout, timestamp };
-    await transaction.save();
+  if (!transactionSnapshot.empty) {
+    const transactionDoc = transactionSnapshot.docs[0];
+    const transaction = transactionDoc.data();
+    
+    await transactionDoc.ref.update({
+      status: 'refunded',
+      payoutData: payout,
+      webhookData: { status, payout, timestamp }
+    });
 
     // Add credits back to user (refund)
-    const user = await User.findById(transaction.userId);
-    if (user) {
-      user.credits += transaction.credits; // Refund credits
-      await user.save();
+    const userRef = db.collection('users').doc(transaction.userId);
+    const userDoc = await userRef.get();
+    
+    if (userDoc.exists) {
+      await userRef.update({
+        credits: admin.firestore.FieldValue.increment(transaction.credits)
+      });
     }
   }
 
@@ -162,20 +193,27 @@ async function handlePayoutReversed(data) {
   const { orderReference, status, payout, timestamp } = data;
   
   // Find payout transaction
-  const transaction = await Transaction.findOne({ orderReference, type: 'payout', status: 'processing' });
+  const transactionRef = db.collection('transactions').where('orderReference', '==', orderReference).where('type', '==', 'payout').where('status', '==', 'processing');
+  const transactionSnapshot = await transactionRef.get();
   
-  if (transaction) {
-    // Update transaction status
-    transaction.status = 'reversed';
-    transaction.payoutData = payout;
-    transaction.webhookData = { status, payout, timestamp };
-    await transaction.save();
+  if (!transactionSnapshot.empty) {
+    const transactionDoc = transactionSnapshot.docs[0];
+    const transaction = transactionDoc.data();
+    
+    await transactionDoc.ref.update({
+      status: 'reversed',
+      payoutData: payout,
+      webhookData: { status, payout, timestamp }
+    });
 
     // Add credits back to user (reverse)
-    const user = await User.findById(transaction.userId);
-    if (user) {
-      user.credits += transaction.credits; // Reverse credits
-      await user.save();
+    const userRef = db.collection('users').doc(transaction.userId);
+    const userDoc = await userRef.get();
+    
+    if (userDoc.exists) {
+      await userRef.update({
+        credits: admin.firestore.FieldValue.increment(transaction.credits)
+      });
     }
   }
 
