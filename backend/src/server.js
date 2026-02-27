@@ -33,6 +33,9 @@ app.use('/api/photos', require('./routes/photos'));
 app.use('/api/credits', require('./routes/credits'));
 app.use('/api/admin', require('./routes/admin'));
 
+// ClickPesa Webhook (no auth required)
+app.post('/webhook/clickpesa', require('./services/clickpesaService').handleWebhook);
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'DukaSell API is running' });

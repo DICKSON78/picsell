@@ -12,13 +12,28 @@ router.post('/deduct', auth, creditsController.deductCredit);
 // Get credit packages
 router.get('/packages', auth, creditsController.getCreditPackages);
 
-// Create payment intent
-router.post('/create-payment', auth, creditsController.createPaymentIntent);
+// Create ClickPesa payment request
+router.post('/create-payment', auth, creditsController.createPayment);
 
-// Confirm payment
-router.post('/confirm-payment', auth, creditsController.confirmPayment);
+// Initiate ClickPesa payment
+router.post('/initiate-payment', auth, creditsController.initiatePayment);
+
+// Save bank details
+router.post('/save-bank-details', auth, creditsController.saveBankDetails);
+
+// Get bank details
+router.get('/bank-details', auth, creditsController.getBankDetails);
+
+// Get exchange rate
+router.get('/exchange-rate', auth, creditsController.getExchangeRate);
+
+// Confirm payment (webhook endpoint)
+router.post('/confirm-payment', creditsController.confirmPayment);
 
 // Get transaction history
 router.get('/transactions', auth, creditsController.getTransactionHistory);
+
+// ClickPesa webhook endpoint (no auth required)
+router.post('/webhook/clickpesa', creditsController.confirmPayment);
 
 module.exports = router;

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 import '../providers/customers_provider.dart';
+import '../services/api_service.dart';
 import '../utils/theme.dart';
 import '../models/customer_model.dart';
 
@@ -17,12 +18,18 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   String _searchQuery = '';
   String _filterStatus = 'all';
+  final ApiService _apiService = ApiService();
 
   final _addNameController = TextEditingController();
   final _addEmailController = TextEditingController();
   final _addPhoneController = TextEditingController();
   final _addCreditsController = TextEditingController(text: '10');
   final _addFormKey = GlobalKey<FormState>();
+
+  // ClickPesa payout controllers
+  final _payoutPhoneController = TextEditingController();
+  final _payoutAmountController = TextEditingController();
+  final _payoutFormKey = GlobalKey<FormState>();
 
   @override
   void initState() {
@@ -38,6 +45,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
     _addEmailController.dispose();
     _addPhoneController.dispose();
     _addCreditsController.dispose();
+    _payoutPhoneController.dispose();
+    _payoutAmountController.dispose();
     super.dispose();
   }
 
@@ -839,6 +848,16 @@ class _CustomerDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   _ActionButton(
+                    icon: Icons.phone_android,
+                    label: 'Pay by Mobile',
+                    color: AppTheme.primaryColor,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showClickPesaPayoutDialog(context, user);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _ActionButton(
                     icon: Icons.history,
                     label: 'View History',
                     color: AppTheme.accentBlue,
@@ -1007,6 +1026,202 @@ class _CustomerDetailSheet extends StatelessWidget {
       SnackBar(
         content: Text(user.isActive ? '${user.name} has been deactivated' : '${user.name} has been activated'),
         backgroundColor: user.isActive ? AppTheme.error : AppTheme.success,
+      ),
+    );
+  }
+
+  void _showClickPesaPayoutDialog(BuildContext context, CustomerModel user) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.phone_android, color: AppTheme.primaryColor),
+            const SizedBox(width: 12),
+            Text('Pay by Mobile', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Form(
+          key: _payoutFormKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Send money to ${user.name} via ClickPesa', 
+                     style: GoogleFonts.poppins(color: AppTheme.textSecondary)),
+                const SizedBox(height: 16),
+                
+                // Phone Number
+                TextFormField(
+                  controller: _payoutPhoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    hintText: '255712345678',
+                    prefixIcon: const Icon(Icons.phone, color: AppTheme.primaryColor),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Phone number is required';
+                    }
+                    if (!RegExp(r'^255[0-9]{9}$').hasMatch(value)) {
+                      return 'Enter valid Tanzanian phone number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                // Amount
+                TextFormField(
+                  controller: _payoutAmountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Amount (TZS)',
+                    hintText: '10000',
+                    prefixIcon: const Icon(Icons.money, color: AppTheme.primaryColor),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Amount is required';
+                    }
+                    final amount = int.tryParse(value);
+                    if (amount == null || amount <= 0) {
+                      return 'Enter valid amount';
+                    }
+                    if (amount < 1000) {
+                      return 'Minimum amount is TZS 1,000';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                // Instructions
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.primaryColor.withAlpha(50)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ClickPesa Instructions:',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '1. Enter recipient phone number\n2. Enter amount in TZS\n3. Click "Send Payment"\n4. USSD prompt will appear\n5. Enter PIN to confirm',
+                        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_payoutFormKey.currentState!.validate()) {
+                final phoneNumber = _payoutPhoneController.text.trim();
+                final amount = int.parse(_payoutAmountController.text);
+                
+                // Generate order reference
+                final orderReference = 'PAYOUT_${DateTime.now().millisecondsSinceEpoch}';
+                
+                try {
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const AlertDialog(
+                      content: Row(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(width: 16),
+                          Text('Initiating payment...'),
+                        ],
+                      ),
+                    ),
+                  );
+                  
+                  // Initiate payout
+                  final response = await _apiService.initiateClickPesaPayout(
+                    phoneNumber: phoneNumber,
+                    amount: amount,
+                    orderReference: orderReference,
+                  );
+                  
+                  // Close loading dialog
+                  Navigator.pop(ctx);
+                  
+                  if (response['success']) {
+                    // Show success message
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Payment Initiated!', style: GoogleFonts.poppins(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Text('Check your phone for USSD prompt', 
+                                 style: GoogleFonts.poppins(color: AppTheme.textSecondary)),
+                            const SizedBox(height: 8),
+                            Text('Order Reference: $orderReference', 
+                                 style: GoogleFonts.poppins(fontFamily: 'monospace')),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text('OK'),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    // Show error message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Payment failed: ${response['error']}'),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: AppTheme.error,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: Text('Send Payment', style: GoogleFonts.poppins(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }

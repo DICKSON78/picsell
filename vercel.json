@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/webhook.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/webhook/clickpesa",
+      "dest": "/api/webhook.js"
+    }
+  ],
+  "env": {
+    "MONGODB_URI": "@mongodb_uri",
+    "JWT_SECRET": "@jwt_secret",
+    "CLICKPESA_CLIENT_ID": "@clickpesa_client_id",
+    "CLICKPESA_API_KEY": "@clickpesa_api_key",
+    "WEBHOOK_SECRET": "@webhook_secret"
+  }
+}

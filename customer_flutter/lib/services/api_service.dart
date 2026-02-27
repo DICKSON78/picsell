@@ -286,10 +286,134 @@ class ApiService {
     }
   }
 
+  // Create ClickPesa payment request
+  Future<Map<String, dynamic>> createPayment({
+    required String packageId,
+    String? phoneNumber,
+    required String paymentMethod,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credits/create-payment'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'packageId': packageId,
+        'phoneNumber': phoneNumber,
+        'paymentMethod': paymentMethod,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to create payment');
+    }
+  }
+
+  // Initiate ClickPesa USSD payment
+  Future<Map<String, dynamic>> initiatePayment({
+    required String orderReference,
+    required String phoneNumber,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credits/initiate-payment'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'orderReference': orderReference,
+        'phoneNumber': phoneNumber,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to initiate payment');
+    }
+  }
+
+  // Check payment status
+  Future<Map<String, dynamic>> checkPaymentStatus(String orderReference) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/transactions?orderReference=$orderReference'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to check payment status');
+    }
+  }
+
+  // Save bank details
+  Future<Map<String, dynamic>> saveBankDetails({
+    required String accountNumber,
+    required String accountName,
+    required String bankName,
+    bool isDefault = false,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credits/save-bank-details'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'accountNumber': accountNumber,
+        'accountName': accountName,
+        'bankName': bankName,
+        'isDefault': isDefault,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to save bank details');
+    }
+  }
+
+  // Get bank details
+  Future<Map<String, dynamic>> getBankDetails() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/bank-details'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get bank details');
+    }
+  }
+
+  // Get exchange rate
+  Future<Map<String, dynamic>> getExchangeRate() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/exchange-rate'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get exchange rate');
+    }
+  }
+
+  // Legacy method for backward compatibility
   Future<Map<String, dynamic>> purchaseCredits({
     required String packageId,
     required String paymentMethod,
   }) async {
+    if (paymentMethod == 'clickpesa') {
+      // Return error - phone number required for ClickPesa
+      throw Exception('Phone number required for ClickPesa payment');
+    }
+    
+    // Fallback to other payment methods
     final response = await http.post(
       Uri.parse('$baseUrl/credits/purchase'),
       headers: await _getHeaders(),

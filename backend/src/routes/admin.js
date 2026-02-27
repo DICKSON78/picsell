@@ -32,4 +32,17 @@ router.get('/transactions', adminAuth, adminController.getTransactions);
 // Reports
 router.get('/reports', adminAuth, adminController.getReports);
 
+// ClickPesa Balance
+router.get('/clickpesa-balance', adminAuth, adminController.getClickPesaBalance);
+
+// ClickPesa Transactions
+router.get('/clickpesa-transactions', adminAuth, adminController.getClickPesaTransactions);
+
+// Initiate ClickPesa Payout
+router.post('/clickpesa-payout', adminAuth, adminController.initiateClickPesaPayout);
+
+// Settings
+router.get('/settings', adminAuth, adminController.getSettings);
+router.post('/settings', adminAuth, adminController.updateSettings);
+
 module.exports = router;

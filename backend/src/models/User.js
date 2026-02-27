@@ -26,6 +26,28 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  bankDetails: {
+    accountNumber: {
+      type: String,
+      default: null,
+    },
+    accountName: {
+      type: String,
+      default: null,
+    },
+    bankName: {
+      type: String,
+      default: null,
+    },
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
+    savedAt: {
+      type: Date,
+      default: null,
+    },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

@@ -8,21 +8,61 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['purchase', 'usage', 'bonus'],
-    required: true,
+    enum: ['purchase', 'payout'],
+    default: 'purchase',
   },
   credits: {
     type: Number,
     required: true,
   },
   amount: {
-    type: Number, // Amount in USD for purchases
-    default: 0,
+    type: Number,
+    required: true,
+  },
+  currency: {
+    type: String,
+    default: 'TZS',
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'completed', 'failed', 'processing', 'refunded', 'reversed'],
+    default: 'pending',
+  },
+  orderReference: {
+    type: String,
+    required: true,
+    unique: true,
   },
   paymentIntentId: {
-    type: String, // Stripe payment intent ID
+    type: String,
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['mobile_money', 'card', 'bank', 'clickpesa_card', 'crdb_bank'],
   },
   description: {
+    type: String,
+  },
+  finalAmount: {
+    type: Number,
+  },
+  completedAt: {
+    type: Date,
+  },
+  webhookData: {
+    eventType: String,
+    status: String,
+    customer: Object,
+    payout: Object,
+    timestamp: Date,
+  },
+  payoutData: {
+    amount: Number,
+    method: String,
+    recipient: String,
+    reference: String,
+  },
+  error: {
     type: String,
   },
   createdAt: {

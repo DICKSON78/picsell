@@ -3,10 +3,115 @@ const Admin = require('../models/Admin');
 const User = require('../models/User');
 const Photo = require('../models/Photo');
 const Transaction = require('../models/Transaction');
+const clickpesaService = require('../services/clickpesaService');
 
 const adminController = {
   // ============================================
-  // AUTH
+  // CLICKPESA ENDPOINTS
+  // ============================================
+
+  // Get ClickPesa account balance
+  async getClickPesaBalance(req, res) {
+    try {
+      const balance = await clickpesaService.getBalance();
+      res.json({
+        success: true,
+        balance,
+        lastUpdated: new Date(),
+      });
+    } catch (error) {
+      console.error('Get ClickPesa Balance Error:', error);
+      res.status(500).json({ error: 'Failed to get ClickPesa balance' });
+    }
+  },
+
+  // Get ClickPesa transactions
+  async getClickPesaTransactions(req, res) {
+    try {
+      const { page = 1, limit = 50, startDate, endDate } = req.query;
+      
+      // For now, return mock data - in real implementation, 
+      // you would query ClickPesa API for transactions
+      const transactions = [
+        {
+          id: '1',
+          type: 'payment',
+          amount: 24000,
+          currency: 'TZS',
+          status: 'completed',
+          phoneNumber: '255712345678',
+          orderReference: 'CRED_123456789',
+          createdAt: new Date(),
+          description: '25 Credits Purchase',
+        },
+        {
+          id: '2',
+          type: 'payout',
+          amount: 5000,
+          currency: 'TZS',
+          status: 'completed',
+          phoneNumber: '255765432100',
+          orderReference: 'PAYOUT_987654321',
+          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          description: 'Admin Payout',
+        },
+      ];
+
+      res.json({
+        success: true,
+        transactions,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: transactions.length,
+        },
+      });
+    } catch (error) {
+      console.error('Get ClickPesa Transactions Error:', error);
+      res.status(500).json({ error: 'Failed to get ClickPesa transactions' });
+    }
+  },
+
+  // Initiate ClickPesa payout
+  async initiateClickPesaPayout(req, res) {
+    try {
+      const { phoneNumber, amount, reason } = req.body;
+
+      if (!phoneNumber || !amount) {
+        return res.status(400).json({ error: 'Phone number and amount required' });
+      }
+
+      // Generate unique order reference
+      const orderReference = `PAYOUT_${Date.now()}_${req.admin._id.toString().slice(-6)}`;
+
+      // Initiate payout
+      const payout = await clickpesaService.initiatePayment(
+        phoneNumber,
+        amount,
+        orderReference
+      );
+
+      if (payout.success) {
+        res.json({
+          success: true,
+          message: 'Payout initiated successfully',
+          orderReference,
+          instructions: 'Please check your phone for USSD prompt to complete payout',
+        });
+      } else {
+        res.status(400).json({ 
+          error: payout.error || 'Failed to initiate payout',
+          details: payout 
+        });
+      }
+    } catch (error) {
+      console.error('Initiate ClickPesa Payout Error:', error);
+      res.status(500).json({ error: 'Failed to initiate payout' });
+    }
+  },
+
+  // ============================================
+  // AUTH ENDPOINTS (LEGACY)
   // ============================================
 
   // Admin Login

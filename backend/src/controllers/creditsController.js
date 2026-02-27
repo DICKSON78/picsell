@@ -98,17 +98,17 @@ const creditsController = {
     }
   },
 
-  // Create payment intent
-  async createPaymentIntent(req, res) {
+  // Create ClickPesa payment request
+  async createPayment(req, res) {
     try {
-      const { packageId } = req.body;
+      const { packageId, phoneNumber, paymentMethod } = req.body;
       const user = req.user;
 
       const packages = {
-        pack_10: { credits: 10, price: 4.99 },
-        pack_25: { credits: 25, price: 9.99 },
-        pack_50: { credits: 50, price: 17.99 },
-        pack_100: { credits: 100, price: 29.99 },
+        pack_10: { credits: 10, price: 12000 }, // TZS 12,000
+        pack_25: { credits: 25, price: 24000 }, // TZS 24,000
+        pack_50: { credits: 50, price: 43000 }, // TZS 43,000
+        pack_100: { credits: 100, price: 72000 }, // TZS 72,000
       };
 
       const selectedPackage = packages[packageId];
@@ -117,30 +117,255 @@ const creditsController = {
         return res.status(400).json({ error: 'Invalid package' });
       }
 
-      // Create Stripe payment intent
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(selectedPackage.price * 100), // Convert to cents
-        currency: 'usd',
-        metadata: {
-          userId: user._id.toString(),
-          credits: selectedPackage.credits,
-          packageId,
-        },
+      // Generate unique order reference
+      const orderReference = `CRED_${Date.now()}_${user._id.toString().slice(-6)}`;
+
+      // Create pending transaction
+      const transaction = await Transaction.create({
+        userId: user._id,
+        type: 'purchase',
+        credits: selectedPackage.credits,
+        amount: selectedPackage.price,
+        currency: paymentMethod === 'card' ? 'USD' : 'TZS',
+        orderReference,
+        status: 'pending',
+        paymentMethod,
+        description: `Purchasing ${selectedPackage.credits} credits`,
       });
 
-      res.json({
-        success: true,
-        clientSecret: paymentIntent.client_secret,
-        amount: selectedPackage.price,
-        credits: selectedPackage.credits,
-      });
+      if (paymentMethod === 'card') {
+        // Handle CRDB bank payment
+        const bankDetails = await clickpesaService.getUserBankDetails(user._id);
+        
+        if (!bankDetails || bankDetails.bankName !== 'CRDB') {
+          return res.status(400).json({ 
+            error: 'No CRDB bank details found. Please save your bank details first.' 
+          });
+        }
+
+        // Process CRDB payment
+        const bankPayment = await clickpesaService.processCRDBPayment(
+          user._id,
+          selectedPackage.price,
+          orderReference
+        );
+
+        if (!bankPayment.success) {
+          transaction.status = 'failed';
+          transaction.error = bankPayment.error || 'CRDB payment failed';
+          await transaction.save();
+          
+          return res.status(400).json({ 
+            error: bankPayment.error || 'Failed to process CRDB payment',
+            details: bankPayment 
+          });
+        }
+
+        // Add credits immediately since CRDB payment is completed
+        user.credits += selectedPackage.credits;
+        user.totalSpent += selectedPackage.price / 100; // Convert to TZS if needed
+        await user.save();
+
+        // Update transaction status
+        transaction.status = 'completed';
+        transaction.completedAt = new Date();
+        transaction.finalAmount = selectedPackage.price;
+        await transaction.save();
+
+        res.json({
+          success: true,
+          orderReference,
+          amount: selectedPackage.price,
+          credits: selectedPackage.credits,
+          currency: 'TZS',
+          paymentMethod: 'crdb_bank',
+          transactionId: bankPayment.transactionId,
+          creditsRemaining: user.credits,
+          message: 'Payment completed successfully',
+        });
+      } else if (paymentMethod === 'clickpesa_card') {
+        // Handle ClickPesa card payment
+        const usdAmount = await clickpesaService.convertTzsToUsd(selectedPackage.price);
+        
+        // Preview card payment
+        const preview = await clickpesaService.previewCardPayment(
+          usdAmount,
+          orderReference
+        );
+
+        if (!preview.success) {
+          transaction.status = 'failed';
+          transaction.error = preview.error || 'Card payment preview failed';
+          await transaction.save();
+          
+          return res.status(400).json({ 
+            error: preview.error || 'Failed to preview card payment',
+            details: preview 
+          });
+        }
+
+        // Initiate card payment
+        const cardPayment = await clickpesaService.initiateCardPayment(
+          usdAmount,
+          orderReference,
+          user._id.toString()
+        );
+
+        if (!cardPayment.success) {
+          transaction.status = 'failed';
+          transaction.error = cardPayment.error || 'Card payment initiation failed';
+          await transaction.save();
+          
+          return res.status(400).json({ 
+            error: cardPayment.error || 'Failed to initiate card payment',
+            details: cardPayment 
+          });
+        }
+
+        res.json({
+          success: true,
+          orderReference,
+          amount: selectedPackage.price,
+          credits: selectedPackage.credits,
+          currency: 'TZS',
+          usdAmount,
+          paymentMethod: 'clickpesa_card',
+          cardPaymentLink: cardPayment.cardPaymentLink,
+          clientId: cardPayment.clientId,
+          transactionId: transaction._id,
+        });
+      } else {
+        // Handle mobile money payment
+        if (!phoneNumber) {
+          return res.status(400).json({ error: 'Phone number is required for mobile money' });
+        }
+
+        // Preview payment with ClickPesa
+        const preview = await clickpesaService.previewPayment(
+          phoneNumber,
+          selectedPackage.price,
+          orderReference
+        );
+
+        if (!preview.success) {
+          transaction.status = 'failed';
+          transaction.error = preview.error || 'Mobile money payment preview failed';
+          await transaction.save();
+          
+          return res.status(400).json({ 
+            error: preview.error || 'Failed to preview payment',
+            details: preview 
+          });
+        }
+
+        res.json({
+          success: true,
+          orderReference,
+          amount: selectedPackage.price,
+          credits: selectedPackage.credits,
+          currency: 'TZS',
+          paymentMethod: 'mobile_money',
+          preview: {
+            availableMethods: preview.activeMethods || [],
+            fee: preview.fee || 0,
+            totalAmount: preview.amount || selectedPackage.price,
+          },
+          transactionId: transaction._id,
+        });
+      }
     } catch (error) {
-      console.error('Create Payment Intent Error:', error);
+      console.error('Create ClickPesa Payment Error:', error);
       res.status(500).json({ error: 'Failed to create payment' });
     }
   },
 
-  // Confirm payment and add credits
+  // Save bank details
+  async saveBankDetails(req, res) {
+    try {
+      const { accountNumber, accountName, bankName, isDefault } = req.body;
+      const user = req.user;
+
+      if (!accountNumber || !accountName || !bankName) {
+        return res.status(400).json({ error: 'All bank details are required' });
+      }
+
+      // Validate CRDB account number (10 digits)
+      if (bankName === 'CRDB' && !/^\d{10}$/.test(accountNumber)) {
+        return res.status(400).json({ error: 'Invalid CRDB account number. Must be 10 digits.' });
+      }
+
+      const bankDetails = {
+        accountNumber,
+        accountName,
+        bankName,
+        isDefault: isDefault || false,
+      };
+
+      await clickpesaService.saveUserBankDetails(user._id, bankDetails);
+
+      res.json({
+        success: true,
+        message: 'Bank details saved successfully',
+        bankDetails: {
+          ...bankDetails,
+          accountNumber: accountNumber.slice(0, 4) + '****' + accountNumber.slice(-4), // Mask account number
+        }
+      });
+    } catch (error) {
+      console.error('Save Bank Details Error:', error);
+      res.status(500).json({ error: 'Failed to save bank details' });
+    }
+  },
+
+  // Get bank details
+  async getBankDetails(req, res) {
+    try {
+      const user = req.user;
+      const bankDetails = await clickpesaService.getUserBankDetails(user._id);
+
+      if (!bankDetails) {
+        return res.json({
+          success: true,
+          hasBankDetails: false,
+          message: 'No bank details found'
+        });
+      }
+
+      res.json({
+        success: true,
+        hasBankDetails: true,
+        bankDetails: {
+          accountNumber: bankDetails.accountNumber.slice(0, 4) + '****' + bankDetails.accountNumber.slice(-4),
+          accountName: bankDetails.accountName,
+          bankName: bankDetails.bankName,
+          isDefault: bankDetails.isDefault,
+          savedAt: bankDetails.savedAt
+        }
+      });
+    } catch (error) {
+      console.error('Get Bank Details Error:', error);
+      res.status(500).json({ error: 'Failed to get bank details' });
+    }
+  },
+
+  // Get exchange rate
+  async getExchangeRate(req, res) {
+    try {
+      const exchangeRate = await clickpesaService.getExchangeRate();
+      
+      res.json({
+        success: true,
+        exchangeRate,
+        lastUpdated: new Date(),
+        currency: 'TZS to USD'
+      });
+    } catch (error) {
+      console.error('Get Exchange Rate Error:', error);
+      res.status(500).json({ error: 'Failed to get exchange rate' });
+    }
+  },
+
+  // Confirm payment and add credits (webhook endpoint)
   async confirmPayment(req, res) {
     try {
       const { paymentIntentId } = req.body;

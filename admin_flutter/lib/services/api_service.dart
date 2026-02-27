@@ -49,6 +49,64 @@ class ApiService {
   }
 
   // ============================================
+  // CLICKPESA ENDPOINTS
+  // ============================================
+
+  // Get ClickPesa account balance
+  Future<Map<String, dynamic>> getClickPesaBalance() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/clickpesa-balance'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get ClickPesa balance');
+    }
+  }
+
+  // Get ClickPesa transactions
+  Future<Map<String, dynamic>> getClickPesaTransactions() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/clickpesa-transactions'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get ClickPesa transactions');
+    }
+  }
+
+  // Initiate ClickPesa payout
+  Future<Map<String, dynamic>> initiateClickPesaPayout({
+    required String phoneNumber,
+    required int amount,
+    required String orderReference,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/admin/clickpesa-payout'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'phoneNumber': phoneNumber,
+        'amount': amount,
+        'orderReference': orderReference,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to initiate ClickPesa payout');
+    }
+  }
+
+  // ============================================
   // AUTH ENDPOINTS
   // ============================================
 
