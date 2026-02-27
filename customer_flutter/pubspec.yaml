@@ -1,0 +1,77 @@
+name: picsell
+description: "PicSell - AI Photo Studio"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.1.0
+  animated_text_kit: ^4.2.2
+  provider: ^6.1.1
+  shimmer: ^3.0.0
+  flutter_local_notifications: ^17.2.1
+
+  # Firebase
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.5.1
+  firebase_storage: ^12.3.7
+
+  # Authentication
+  google_sign_in: ^6.2.1
+
+  # Sharing & Utils
+  share_plus: ^7.2.2
+  intl: ^0.19.0
+
+  # Image & Camera
+  image_picker: ^1.0.7
+  camera: ^0.10.5+9
+  path_provider: ^2.1.2
+  path: ^1.8.3
+
+  # Network & API
+  http: ^1.2.0
+  dio: ^5.4.0
+
+  # Image processing
+  image: ^4.1.7
+
+  # State & Storage
+  shared_preferences: ^2.2.2
+
+  # Caching
+  cached_network_image: ^3.3.1
+  crypto: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logo.png
+ 

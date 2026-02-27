@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "173428267051",
+    "project_id": "dukasell",
+    "storage_bucket": "dukasell.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:173428267051:android:6b1ce8e805825c6a1fb26e",
+        "android_client_info": {
+          "package_name": "com.dukasell.customer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "173428267051-ac4rdigrclqmkgo2mi75gm42d6bkidnl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dukasell.customer",
+            "certificate_hash": "5a06d91223a7def2b49e7274d05edd92526a41e2"
+          }
+        },
+        {
+          "client_id": "173428267051-dbartvo36p10pb66jc4m90ounmlqlk3l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdL-yVTqy_UuOitJA5rz5aDmiEKWfJDKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "173428267051-dbartvo36p10pb66jc4m90ounmlqlk3l.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "173428267051-lsjq7189bau00ka7chharnib0vhq1jbr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.dukasell.dukasellCustomer"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:173428267051:android:0b580f25e83cad3f1fb26e",
+        "android_client_info": {
+          "package_name": "com.dukasell.dukasell_admin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "173428267051-dbartvo36p10pb66jc4m90ounmlqlk3l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdL-yVTqy_UuOitJA5rz5aDmiEKWfJDKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "173428267051-dbartvo36p10pb66jc4m90ounmlqlk3l.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "173428267051-lsjq7189bau00ka7chharnib0vhq1jbr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.dukasell.dukasellCustomer"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

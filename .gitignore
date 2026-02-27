@@ -32,6 +32,7 @@ yarn-error.*
 
 # local env files
 .env*.local
+backend/.env
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +42,33 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Backend uploads and temp files
+backend/uploads/
+uploads/
+*.log
+
+# Database
+data/
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Flutter build artifacts
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache
+
+# Android signing keys - NEVER commit
+**/*.keystore
+**/key.properties
+**/upload-keystore.jks
+
+# Duplicate google-services files at root level
+/google-services*.json
