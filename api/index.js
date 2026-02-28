@@ -31,13 +31,36 @@ if (!admin.apps.length) {
   }
 }
 
-// Verify JWT token
-function verifyToken(req) {
+// Verify Firebase ID token
+async function verifyToken(req) {
   try {
     const token = req.headers.authorization?.replace("Bearer ", "");
-    if (!token) return null;
-    return jwt.verify(token, process.env.JWT_SECRET);
+    if (!token) {
+      console.warn("No token in headers");
+      return null;
+    }
+
+    // Try to verify as Firebase ID token first
+    if (admin && admin.auth) {
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        console.log(`✅ Token verified for user: ${decodedToken.uid}`);
+        return { userId: decodedToken.uid, uid: decodedToken.uid };
+      } catch (err) {
+        console.error("Firebase token verification failed:", err.message);
+        // Fall through to try JWT verification
+      }
+    }
+
+    // Fallback: try regular JWT verification if Firebase fails
+    try {
+      return jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      console.error("JWT verification failed:", err.message);
+      return null;
+    }
   } catch (err) {
+    console.error("Token verification error:", err);
     return null;
   }
 }
@@ -91,7 +114,7 @@ module.exports = async (req, res) => {
 // Credits handler
 async function handleCredits(req, res) {
   // Check auth for all endpoints
-  const decoded = verifyToken(req);
+  const decoded = await verifyToken(req);
   if (!decoded) {
     return res.status(401).json({ error: "Authentication required" });
   }
