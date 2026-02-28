@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/api_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -29,6 +30,17 @@ class AuthProvider extends ChangeNotifier {
   Future<void> initializeAuth() async {
     final firebaseUser = _authService.currentUser;
     if (firebaseUser != null) {
+      // Get the current token and save it to ApiService
+      try {
+        final idToken = await firebaseUser.getIdToken();
+        if (idToken != null) {
+          await ApiService().setToken(idToken);
+          debugPrint('✅ Token reloaded on app initialization');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to reload token: $e');
+      }
+
       _user = await _firestoreService.getUser(firebaseUser.uid);
       notifyListeners();
       // Start listening for real-time updates

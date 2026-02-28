@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../firebase_options.dart';
+import 'api_service.dart';
 
 class AuthService {
   // Lazy initialization to avoid accessing Firebase before it's ready
@@ -87,6 +88,17 @@ class AuthService {
       final userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user == null) return null;
+
+      // Get Firebase ID token and save it to ApiService
+      try {
+        final idToken = await userCredential.user!.getIdToken();
+        if (idToken != null) {
+          await ApiService().setToken(idToken);
+          debugPrint('✅ Firebase ID token saved to ApiService (Google Sign-In)');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to save token: $e');
+      }
 
       // Check if user exists in Firestore
       final existingUser = await getUserData(userCredential.user!.uid);
@@ -378,6 +390,17 @@ class AuthService {
       await _firestore.collection('users').doc(credential.user!.uid).update({
         'lastLogin': Timestamp.now(),
       });
+
+      // Get Firebase ID token and save it to ApiService
+      try {
+        final idToken = await credential.user!.getIdToken();
+        if (idToken != null) {
+          await ApiService().setToken(idToken);
+          debugPrint('✅ Firebase ID token saved to ApiService');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Failed to save token: $e');
+      }
 
       // Get user data
       return await getUserData(credential.user!.uid);
