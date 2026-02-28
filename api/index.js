@@ -26,10 +26,23 @@ if (!admin.apps.length) {
       console.warn("Missing Firebase env vars:", missingVars);
     }
 
+    // Process private key - handle both escaped and unescaped formats
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey) {
+      // If the key contains literal \n (escaped), convert to actual newlines
+      if (privateKey.includes("\\n")) {
+        privateKey = privateKey.replace(/\\n/g, "\n");
+      }
+      // Ensure key has BEGIN/END markers
+      if (!privateKey.includes("BEGIN PRIVATE KEY")) {
+        console.error("❌ Firebase private key missing PEM markers (BEGIN PRIVATE KEY)");
+      }
+    }
+
     const serviceAccount = {
       projectId: process.env.FIREBASE_PROJECT_ID,
       privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      privateKey: privateKey,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       clientId: process.env.FIREBASE_CLIENT_ID,
       authUri: process.env.FIREBASE_AUTH_URI || "https://accounts.google.com/o/oauth2/auth",
