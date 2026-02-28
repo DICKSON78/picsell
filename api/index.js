@@ -26,6 +26,24 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// Parse JSON body
+async function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        resolve({});
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 // Verify JWT token
 function verifyToken(req) {
   try {
@@ -106,16 +124,17 @@ async function handleCredits(req, res) {
 
   // POST /api/credits/create-payment
   if (req.method === 'POST' && url === '/api/credits/create-payment') {
-    return handleCreatePayment(req, res, decoded);
+    const body = await parseBody(req);
+    return handleCreatePayment(req, res, decoded, body);
   }
 
   res.status(404).json({ error: 'Endpoint not found' });
 }
 
 // Create payment handler
-async function handleCreatePayment(req, res, decoded) {
+async function handleCreatePayment(req, res, decoded, body) {
   try {
-    const { packageId, phoneNumber, paymentMethod } = req.body;
+    const { packageId, phoneNumber, paymentMethod } = body;
 
     const packages = {
       pack_10: { credits: 10, price: 1000 },
@@ -216,9 +235,10 @@ async function handleCreatePayment(req, res, decoded) {
 // ClickPesa Webhook handler
 async function handleClickPesaWebhook(req, res) {
   try {
-    console.log('Webhook received:', req.body);
+    const body = await parseBody(req);
+    console.log('Webhook received:', body);
 
-    const { order_reference, status, transaction_id } = req.body;
+    const { order_reference, status, transaction_id } = body;
 
     if (status === 'completed') {
       // Find transaction and update
