@@ -9,15 +9,18 @@ Your payment system is **fully implemented and tested**. Here's how to use it:
 ## 📱 Testing on Flutter App
 
 ### **Step 1: Open Credits Screen**
+
 ```
 Home Screen → Credits (Bottom Nav) → Credits Screen
 ```
 
 ### **Step 2: Select Mobile Money**
+
 - Tap: **Mobile Money** card
 - Shows: "TIGO PESA, Airtel Money, Halotel"
 
 ### **Step 3: Add Phone Number**
+
 - **First Time Only:**
   1. Dialog appears: "Thibitisha Namba ya Simu" (Verify Phone Number)
   2. Enter: Your phone number (0712345678 OR 255712345678)
@@ -31,16 +34,19 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
   3. Can tap **Change** to modify
 
 ### **Step 4: Tap Continue to Payment**
+
 - Button: "Endelea na Malipo" (Continue to Payment)
 - Status shows: "Processing..."
 
 ### **Step 5: USSD Push Arrives**
+
 - Your phone receives USSD notification
 - Message: "Ombi la malipo limetumwa" (Payment request sent)
 - Dialog shows: "Maelekezo ya Malipo" (Payment Instructions)
 - Displays: Your phone number + Payment reference
 
 ### **Step 6: Complete Payment on Phone**
+
 1. Check your phone for USSD notification
 2. Follow the USSD menu
 3. Select payment method:
@@ -50,6 +56,7 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
 4. Complete the payment
 
 ### **Step 7: Auto Credit Addition**
+
 - ✅ Webhook receives payment confirmation
 - ✅ System adds credits automatically
 - ✅ Your balance updates
@@ -60,6 +67,7 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
 ## 🔧 What Happens Behind the Scenes
 
 ### **Flutter App Does:**
+
 ```
 1. User enters phone: "0712345678"
 2. App saves to Firestore
@@ -70,6 +78,7 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
 ```
 
 ### **Backend Does:**
+
 ```
 1. Receives payment request
 2. Validates phone & package
@@ -81,6 +90,7 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
 ```
 
 ### **ClickPesa Does:**
+
 ```
 1. Receives initiation request with checksum
 2. Validates checksum (HMAC-SHA256)
@@ -95,6 +105,7 @@ Home Screen → Credits (Bottom Nav) → Credits Screen
 ## ✅ Backend Files Modified
 
 ### **1. `.env` Configuration**
+
 ```env
 CLICKPESA_CLIENT_ID=IDV37HFqPz7sE7lbpjdrQbttdKh1Y9J9
 CLICKPESA_API_KEY=SKgLnyfPd9LwMbwhe9OSaFKelEn9FTDLDrSPQPfEbd
@@ -102,16 +113,19 @@ CLICKPESA_CHECKSUM_SECRET=CHKhUrVdghSmnaP6hpFM9p21RKhjA2RTOPR
 ```
 
 ### **2. `src/services/clickpesaService.js`**
+
 - ✅ Fixed checksum calculation
 - ✅ Fixed amount type handling
 - ✅ Working USSD payment methods
 
 ### **3. `src/controllers/creditsController.js`**
+
 - ✅ Fixed order reference format (alphanumeric only)
 - ✅ Proper payment initiation
 - ✅ Error handling
 
 ### **4. `test_clickpesa.js`**
+
 - ✅ Fixed dotenv loading
 - ✅ Complete payment flow testing
 
@@ -120,6 +134,7 @@ CLICKPESA_CHECKSUM_SECRET=CHKhUrVdghSmnaP6hpFM9p21RKhjA2RTOPR
 ## ✅ Flutter Files Ready
 
 ### **1. `customer_flutter/lib/screens/credits_screen.dart`**
+
 - ✅ Phone number management
 - ✅ USSD payment initiation
 - ✅ Payment instructions dialog
@@ -148,18 +163,21 @@ CLICKPESA_CHECKSUM_SECRET=CHKhUrVdghSmnaP6hpFM9p21RKhjA2RTOPR
 Before going live:
 
 - [ ] **Backend Environment Variables**
+
   ```bash
   vercel env list
   # Verify: CLICKPESA_CLIENT_ID, CLICKPESA_API_KEY, CLICKPESA_CHECKSUM_SECRET
   ```
 
 - [ ] **ClickPesa Webhook Configuration**
+
   ```
   https://merchant.clickpesa.com/webhooks
   # Verify all events point to: https://dickson78s-projects-picsell.vercel.app/webhook/clickpesa
   ```
 
 - [ ] **Flutter App Build**
+
   ```bash
   cd customer_flutter
   flutter pub get
@@ -184,31 +202,36 @@ Before going live:
 
 When user completes USSD, they can choose:
 
-| Method | Fee | Status |
-|--------|-----|--------|
-| TIGO-PESA | 1,150 TZS | ✅ Available |
+| Method       | Fee       | Status       |
+| ------------ | --------- | ------------ |
+| TIGO-PESA    | 1,150 TZS | ✅ Available |
 | AIRTEL-MONEY | 1,150 TZS | ✅ Available |
-| HALOPESA | 1,150 TZS | ✅ Available |
+| HALOPESA     | 1,150 TZS | ✅ Available |
 
 ---
 
 ## 📞 Troubleshooting
 
 ### **"Invalid checksum" Error**
+
 - ✅ FIXED - Checksum secret was added to .env
 
 ### **"Invalid Order Reference" Error**
+
 - ✅ FIXED - Changed format from `CRED_123_abc` to `CRED123abc`
 
 ### **"Amount type error" Error**
+
 - ✅ FIXED - Converted amount to string before checksum
 
 ### **"Payment not initiating" Error**
+
 - Check: Internet connection enabled
 - Check: Phone number verified (green checkmark)
 - Check: Payment method selected
 
 ### **"Credits not added after payment" Error**
+
 - Check: ClickPesa webhook is configured
 - Check: Vercel webhook endpoint is correct
 - Check: Firestore rules allow webhook updates
@@ -244,6 +267,7 @@ When user completes USSD, they can choose:
 **Everything is implemented, tested, and ready for production.**
 
 Users can now:
+
 - ✅ Save their phone number
 - ✅ Initiate USSD payments
 - ✅ Complete payments via USSD menu

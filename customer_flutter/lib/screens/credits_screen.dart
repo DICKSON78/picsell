@@ -1,29 +1,13 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
 import '../providers/auth_provider.dart';
 import '../providers/localization_provider.dart';
-import '../services/firestore_service.dart';
 import '../services/api_service.dart';
-
-// CreditsScreenTheme class for consistent styling
-class CreditsScreenTheme {
-  static const Color primaryColor = Color(0xFF2196F3);
-  static const Color backgroundColor = Color(0xFFF5F5F5);
-  static const Color text = Color(0xFF212121);
-  static const Color textSecondary = Color(0xFF757575);
-  static const Color error = Color(0xFFF44336);
-  static const Color success = Color(0xFF4CAF50);
-  
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-  
-  static const BorderSide border = BorderSide(color: Color(0xFFE0E0E0));
-}
+import '../services/firestore_service.dart';
 
 class CreditsScreen extends StatefulWidget {
   final int credits;
@@ -39,440 +23,45 @@ class CreditsScreen extends StatefulWidget {
   State<CreditsScreen> createState() => _CreditsScreenState();
 }
 
+// CreditsScreenTheme class for consistent styling
+class CreditsScreenTheme {
+  static const Color primaryColor = Color(0xFF2196F3);
+  static const Color backgroundColor = Color(0xFFF5F5F5);
+  static const Color text = Color(0xFF212121);
+  static const Color textSecondary = Color(0xFF757575);
+  static const Color error = Color(0xFFF44336);
+  static const Color success = Color(0xFF4CAF50);
+
+  static const LinearGradient primaryGradient = LinearGradient(
+    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const BorderSide border = BorderSide(color: Color(0xFFE0E0E0));
+}
+
 class _CreditsScreenState extends State<CreditsScreen> {
   final ApiService _apiService = ApiService();
   final FirestoreService _firestoreService = FirestoreService();
-  int _selectedPaymentMethod = -1; // -1 = none selected, 0 = card, 1 = mobile money
+  int _selectedPaymentMethod =
+      -1; // -1 = none selected, 0 = card, 1 = mobile money
   bool _isProcessing = false;
   bool _hasInternetConnection = true;
   Timer? _connectionTimer;
-  
+
   // Phone number management
   String _savedPhoneNumber = '';
   bool _isPhoneVerified = false;
   bool _isSavingPhone = false;
   final TextEditingController _phoneController = TextEditingController();
 
-  // Format phone number for ClickPesa API
-  String _formatPhoneNumberForClickPesa(String phone) {
-    String cleanPhone = phone.replaceAll(' ', '').replaceAll('-', '');
-    
-    // If starts with 0 and has 10 digits, convert to international format
-    if (cleanPhone.startsWith('0') && cleanPhone.length == 10) {
-      return '255${cleanPhone.substring(1)}';
-    }
-    
-    // If already in international format, return as is
-    if (cleanPhone.startsWith('255') && cleanPhone.length == 12) {
-      return cleanPhone;
-    }
-    
-    // If starts with +, remove the +
-    if (cleanPhone.startsWith('+255') && cleanPhone.length == 13) {
-      return cleanPhone.substring(1);
-    }
-    
-    return cleanPhone; // Return as-is if no format matches
-  }
-
-  // Validate phone number format
-  bool _isValidPhoneNumber(String phone) {
-    String cleanPhone = phone.replaceAll(' ', '').replaceAll('-', '');
-    
-    // Check for 10-digit format (starting with 0)
-    if (RegExp(r'^0[0-9]{9}$').hasMatch(cleanPhone)) {
-      return true;
-    }
-    
-    // Check for international format (255XXXXXXXXX)
-    if (RegExp(r'^255[0-9]{9}$').hasMatch(cleanPhone)) {
-      return true;
-    }
-    
-    return false;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _checkInternetConnection();
-    _startConnectionMonitoring();
-    _loadSavedPhoneNumber();
-  }
-
-  @override
-  void dispose() {
-    _connectionTimer?.cancel();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  // Check internet connection
-  Future<void> _checkInternetConnection() async {
-    try {
-      final hasConnection = await _apiService.testConnection();
-      setState(() {
-        _hasInternetConnection = hasConnection['success'] == true;
-      });
-    } catch (e) {
-      setState(() {
-        _hasInternetConnection = false;
-      });
-    }
-  }
-
-  // Start connection monitoring
-  void _startConnectionMonitoring() {
-    _connectionTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _checkInternetConnection();
-    });
-  }
-
-  // Load saved phone number
-  Future<void> _loadSavedPhoneNumber() async {
-    try {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
-        final userData = await _firestoreService.getUserData(auth.currentUser!.id);
-        if (userData != null) {
-          setState(() {
-            _savedPhoneNumber = userData['phoneNumber'] ?? '';
-            _isPhoneVerified = userData['phoneVerified'] ?? false;
-          });
-        }
-      }
-    } catch (e) {
-      print('Error loading phone number: $e');
-    }
-  }
-
-  // Save phone number
-  Future<void> _savePhoneNumber(String phoneNumber) async {
-    try {
-      setState(() {
-        _isSavingPhone = true;
-      });
-      
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
-        await _firestoreService.updateUserData(auth.currentUser!.id, {
-          'phoneNumber': phoneNumber,
-          'phoneVerified': true,
-          'phoneUpdatedAt': DateTime.now().toIso8601String(),
-        });
-        setState(() {
-          _savedPhoneNumber = phoneNumber;
-          _isPhoneVerified = true;
-        });
-      }
-    } catch (e) {
-      print('Error saving phone number: $e');
-      rethrow; // Re-throw to handle in dialog
-    } finally {
-      setState(() {
-        _isSavingPhone = false;
-      });
-    }
-  }
-
-  // Show phone verification dialog
-  void _showPhoneVerificationDialog() {
-    final localization = Provider.of<LocalizationProvider>(context, listen: false);
-    final isSwahili = localization.isSwahili;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          isSwahili ? 'Thibitisha Namba ya Simu' : 'Verify Phone Number',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isSwahili 
-                ? 'Weka namba yako ya simu kwa ajili ya malipo ya Mobile Money' 
-                : 'Enter your phone number for Mobile Money payments',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: isSwahili ? 'Namba ya Simu' : 'Phone Number',
-                hintText: isSwahili ? '0712345678' : '0712345678',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return isSwahili ? 'Tafadhali weka namba ya simu' : 'Please enter phone number';
-                }
-                if (!_isValidPhoneNumber(value)) {
-                  return isSwahili 
-                    ? 'Namba lazima kuwa 07XXXXXXXX au 255XXXXXXXXX' 
-                    : 'Phone number must be 07XXXXXXXX or 255XXXXXXXXX';
-                }
-                return null;
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isSavingPhone ? null : () => Navigator.pop(context),
-            child: Text(
-              isSwahili ? 'Sitisha' : 'Cancel',
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: _isSavingPhone 
-                ? null 
-                : () async {
-                    final phoneNumber = _phoneController.text.trim();
-                    if (_isValidPhoneNumber(phoneNumber)) {
-                      try {
-                        await _savePhoneNumber(phoneNumber);
-                        if (mounted) {
-                          Navigator.pop(context);
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                isSwahili 
-                                  ? 'Hitilafu katika kuhifadhi: $e' 
-                                  : 'Error saving phone: $e',
-                              ),
-                              backgroundColor: CreditsScreenTheme.error,
-                            ),
-                          );
-                        }
-                      }
-                    }
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CreditsScreenTheme.primaryColor,
-            ),
-            child: _isSavingPhone
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isSwahili ? 'Inahifadhi...' : 'Saving...',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  )
-                : Text(
-                    isSwahili ? 'Hifadhi' : 'Save',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  
-  // Initiate Mobile Money Payment
-  Future<void> _initiateMobileMoneyPayment() async {
-    final localization = Provider.of<LocalizationProvider>(context, listen: false);
-    final isSwahili = localization.isSwahili;
-    
-    try {
-      setState(() {
-        _isProcessing = true;
-      });
-
-      // Create payment request with saved phone number
-      // Format phone number for ClickPesa API
-      String formattedPhone = _formatPhoneNumberForClickPesa(_savedPhoneNumber);
-      
-      // Validate phone number
-      if (!_isValidPhoneNumber(_savedPhoneNumber)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isSwahili 
-                ? 'Nambari ya simu si sahihi. Tafadhali sahihi na jaribu tena.' 
-                : 'Invalid phone number format. Please correct and try again.',
-            ),
-            backgroundColor: CreditsScreenTheme.error,
-          ),
-        );
-        return;
-      }
-      
-      print('📱 Phone verification:');
-      print('   Original: $_savedPhoneNumber');
-      print('   Formatted: $formattedPhone');
-      
-      final response = await _apiService.createPayment(
-        packageId: 'pack_25', // Default to popular package
-        phoneNumber: formattedPhone,
-        paymentMethod: 'mobile_money',
-      );
-
-      if (response['success'] == true) {
-        // Check if payment was initiated successfully
-        if (response['paymentInitiated'] == true) {
-          // Show success message that USSD push was sent
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isSwahili 
-                  ? 'Ombi la malipo limetumwa. Tafadali angalia simu yako kukamilisha malipo.' 
-                  : response['message'] ?? 'USSD push sent to your phone. Please complete the payment.',
-              ),
-              backgroundColor: CreditsScreenTheme.success,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-          // Show payment instructions with order reference
-          _showPaymentInstructions(response['orderReference'] ?? '');
-        } else {
-          // Fallback for old response format
-          _showPaymentInstructions(response['orderReference'] ?? '');
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isSwahili 
-                ? 'Imeshindikana: ${response['error'] ?? 'Unknown error'}' 
-                : 'Payment failed: ${response['error'] ?? 'Unknown error'}',
-            ),
-            backgroundColor: CreditsScreenTheme.error,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isSwahili 
-              ? 'Hitilafu: $e' 
-              : 'Error: $e',
-          ),
-          backgroundColor: CreditsScreenTheme.error,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
-
-  // Show payment instructions
-  void _showPaymentInstructions(String orderReference) {
-    final localization = Provider.of<LocalizationProvider>(context, listen: false);
-    final isSwahili = localization.isSwahili;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(
-          isSwahili ? 'Maelekezo ya Malipo' : 'Payment Instructions',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isSwahili 
-                ? 'Tafadhali kamilisha malipo kwa kutumia namba:' 
-                : 'Please complete payment using:',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.phone_android, color: Colors.green[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    _savedPhoneNumber,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isSwahili 
-                ? 'Kumbukumbu ya malipo: $orderReference' 
-                : 'Payment reference: $orderReference',
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isSwahili 
-                ? 'Malipo yatachambuliwa moja kwa moja na credits zitaongezwa.' 
-                : 'Payment will be processed automatically and credits will be added.',
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: CreditsScreenTheme.primaryColor,
-            ),
-            child: Text(
-              isSwahili ? 'Sawa' : 'OK',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Format price helper
-  String _formatPrice(double price) {
-    return price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     try {
       final localization = Provider.of<LocalizationProvider>(context);
       final isSwahili = localization.isSwahili;
-      
+
       return Scaffold(
         backgroundColor: CreditsScreenTheme.backgroundColor,
         appBar: AppBar(
@@ -544,7 +133,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
               child: Column(
                 children: [
                   Text(
-                    isSwahili ? 'Chagua Njia ya Malipo' : 'Select Payment Method',
+                    isSwahili
+                        ? 'Chagua Njia ya Malipo'
+                        : 'Select Payment Method',
                     style: GoogleFonts.poppins(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -584,7 +175,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
                         const SizedBox(width: 12),
                         Text(
                           '•',
-                          style: TextStyle(color: CreditsScreenTheme.primaryColor),
+                          style:
+                              TextStyle(color: CreditsScreenTheme.primaryColor),
                         ),
                         const SizedBox(width: 12),
                         Text(
@@ -611,7 +203,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
                   _PaymentMethodCard(
                     icon: Icons.phone_android,
                     title: 'Mobile Money',
-                    subtitle: _isPhoneVerified 
+                    subtitle: _isPhoneVerified
                         ? 'TIGO PESA, Airtel Money, Halotel ($_savedPhoneNumber)'
                         : 'TIGO PESA, Airtel Money, Halotel',
                     color: Colors.green,
@@ -625,7 +217,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
                       }
                     },
                   ),
-                  
+
                   // Card Payment (CRDB Bank)
                   _PaymentMethodCard(
                     icon: Icons.account_balance,
@@ -750,14 +342,20 @@ class _CreditsScreenState extends State<CreditsScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _selectedPaymentMethod >= 0 ? CreditsScreenTheme.primaryColor : Colors.grey,
+                    backgroundColor: _selectedPaymentMethod >= 0
+                        ? CreditsScreenTheme.primaryColor
+                        : Colors.grey,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: (_selectedPaymentMethod >= 0 && !_isProcessing && _hasInternetConnection && 
-                  (_selectedPaymentMethod == 0 || (_selectedPaymentMethod == 1 && _isPhoneVerified)))
+                  onPressed: (_selectedPaymentMethod >= 0 &&
+                          !_isProcessing &&
+                          _hasInternetConnection &&
+                          (_selectedPaymentMethod == 0 ||
+                              (_selectedPaymentMethod == 1 &&
+                                  _isPhoneVerified)))
                       ? () {
                           if (_selectedPaymentMethod == 1) {
                             // Mobile Money - Proceed with payment
@@ -776,12 +374,15 @@ class _CreditsScreenState extends State<CreditsScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              localization.isSwahili ? 'Inachambua...' : 'Processing...',
+                              localization.isSwahili
+                                  ? 'Inachambua...'
+                                  : 'Processing...',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -791,11 +392,14 @@ class _CreditsScreenState extends State<CreditsScreen> {
                           ],
                         )
                       : Text(
-                          !_hasInternetConnection 
-                              ? 'No Internet Connection' 
-                              : (_selectedPaymentMethod == 1 && !_isPhoneVerified)
+                          !_hasInternetConnection
+                              ? 'No Internet Connection'
+                              : (_selectedPaymentMethod == 1 &&
+                                      !_isPhoneVerified)
                                   ? 'Add Phone Number'
-                                  : (localization.isSwahili ? 'Endelea na Malipo' : 'Continue to Payment'),
+                                  : (localization.isSwahili
+                                      ? 'Endelea na Malipo'
+                                      : 'Continue to Payment'),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -825,105 +429,432 @@ class _CreditsScreenState extends State<CreditsScreen> {
               SizedBox(height: 16),
               Text('Something went wrong', style: TextStyle(fontSize: 18)),
               SizedBox(height: 8),
-              Text('Please try again later', style: TextStyle(color: Colors.grey)),
+              Text('Please try again later',
+                  style: TextStyle(color: Colors.grey)),
             ],
           ),
         ),
       );
     }
   }
-}
-
-// Payment Method Card Widget
-class _PaymentMethodCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _PaymentMethodCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.isSelected,
-    required this.onTap,
-  });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.1) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
+  void dispose() {
+    _connectionTimer?.cancel();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInternetConnection();
+    _startConnectionMonitoring();
+    _loadSavedPhoneNumber();
+  }
+
+  // Check internet connection
+  Future<void> _checkInternetConnection() async {
+    try {
+      final hasConnection = await _apiService.testConnection();
+      setState(() {
+        _hasInternetConnection = hasConnection['success'] == true;
+      });
+    } catch (e) {
+      setState(() {
+        _hasInternetConnection = false;
+      });
+    }
+  }
+
+  // Format phone number for ClickPesa API
+  String _formatPhoneNumberForClickPesa(String phone) {
+    String cleanPhone = phone.replaceAll(' ', '').replaceAll('-', '');
+
+    // If starts with 0 and has 10 digits, convert to international format
+    if (cleanPhone.startsWith('0') && cleanPhone.length == 10) {
+      return '255${cleanPhone.substring(1)}';
+    }
+
+    // If already in international format, return as is
+    if (cleanPhone.startsWith('255') && cleanPhone.length == 12) {
+      return cleanPhone;
+    }
+
+    // If starts with +, remove the +
+    if (cleanPhone.startsWith('+255') && cleanPhone.length == 13) {
+      return cleanPhone.substring(1);
+    }
+
+    return cleanPhone; // Return as-is if no format matches
+  }
+
+  // Format price helper
+  String _formatPrice(double price) {
+    return price.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
+  }
+
+  // Initiate Mobile Money Payment
+  Future<void> _initiateMobileMoneyPayment() async {
+    final localization =
+        Provider.of<LocalizationProvider>(context, listen: false);
+    final isSwahili = localization.isSwahili;
+
+    try {
+      setState(() {
+        _isProcessing = true;
+      });
+
+      // Create payment request with saved phone number
+      // Format phone number for ClickPesa API
+      String formattedPhone = _formatPhoneNumberForClickPesa(_savedPhoneNumber);
+
+      // Validate phone number
+      if (!_isValidPhoneNumber(_savedPhoneNumber)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isSwahili
+                  ? 'Nambari ya simu si sahihi. Tafadhali sahihi na jaribu tena.'
+                  : 'Invalid phone number format. Please correct and try again.',
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            backgroundColor: CreditsScreenTheme.error,
+          ),
+        );
+        return;
+      }
+
+      print('📱 Phone verification:');
+      print('   Original: $_savedPhoneNumber');
+      print('   Formatted: $formattedPhone');
+
+      final response = await _apiService.createPayment(
+        packageId: 'pack_25', // Default to popular package
+        phoneNumber: formattedPhone,
+        paymentMethod: 'mobile_money',
+      );
+
+      if (response['success'] == true) {
+        // Check if payment was initiated successfully
+        if (response['paymentInitiated'] == true) {
+          // Show success message that USSD push was sent
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isSwahili
+                    ? 'Ombi la malipo limetumwa. Tafadali angalia simu yako kukamilisha malipo.'
+                    : response['message'] ??
+                        'USSD push sent to your phone. Please complete the payment.',
+              ),
+              backgroundColor: CreditsScreenTheme.success,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          // Show payment instructions with order reference
+          _showPaymentInstructions(response['orderReference'] ?? '');
+        } else {
+          // Fallback for old response format
+          _showPaymentInstructions(response['orderReference'] ?? '');
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isSwahili
+                  ? 'Imeshindikana: ${response['error'] ?? 'Unknown error'}'
+                  : 'Payment failed: ${response['error'] ?? 'Unknown error'}',
+            ),
+            backgroundColor: CreditsScreenTheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isSwahili ? 'Hitilafu: $e' : 'Error: $e',
+          ),
+          backgroundColor: CreditsScreenTheme.error,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  // Validate phone number format
+  bool _isValidPhoneNumber(String phone) {
+    String cleanPhone = phone.replaceAll(' ', '').replaceAll('-', '');
+
+    // Check for 10-digit format (starting with 0)
+    if (RegExp(r'^0[0-9]{9}$').hasMatch(cleanPhone)) {
+      return true;
+    }
+
+    // Check for international format (255XXXXXXXXX)
+    if (RegExp(r'^255[0-9]{9}$').hasMatch(cleanPhone)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // Load saved phone number
+  Future<void> _loadSavedPhoneNumber() async {
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
+        final userData =
+            await _firestoreService.getUserData(auth.currentUser!.id);
+        if (userData != null) {
+          setState(() {
+            _savedPhoneNumber = userData['phoneNumber'] ?? '';
+            _isPhoneVerified = userData['phoneVerified'] ?? false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading phone number: $e');
+    }
+  }
+
+  // Save phone number
+  Future<void> _savePhoneNumber(String phoneNumber) async {
+    try {
+      setState(() {
+        _isSavingPhone = true;
+      });
+
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
+        await _firestoreService.updateUserData(auth.currentUser!.id, {
+          'phoneNumber': phoneNumber,
+          'phoneVerified': true,
+          'phoneUpdatedAt': DateTime.now().toIso8601String(),
+        });
+        setState(() {
+          _savedPhoneNumber = phoneNumber;
+          _isPhoneVerified = true;
+        });
+      }
+    } catch (e) {
+      print('Error saving phone number: $e');
+      rethrow; // Re-throw to handle in dialog
+    } finally {
+      setState(() {
+        _isSavingPhone = false;
+      });
+    }
+  }
+
+  // Show payment instructions
+  void _showPaymentInstructions(String orderReference) {
+    final localization =
+        Provider.of<LocalizationProvider>(context, listen: false);
+    final isSwahili = localization.isSwahili;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          isSwahili ? 'Maelekezo ya Malipo' : 'Payment Instructions',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isSwahili
+                  ? 'Tafadhali kamilisha malipo kwa kutumia namba:'
+                  : 'Please complete payment using:',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Row(
                 children: [
+                  Icon(Icons.phone_android, color: Colors.green[600]),
+                  const SizedBox(width: 8),
                   Text(
-                    title,
-                    style: GoogleFonts.poppins(
+                    _savedPhoneNumber,
+                    style: const TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: CreditsScreenTheme.text,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: CreditsScreenTheme.textSecondary,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
                     ),
                   ),
                 ],
               ),
             ),
-            if (isSelected)
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ),
+            const SizedBox(height: 16),
+            Text(
+              isSwahili
+                  ? 'Kumbukumbu ya malipo: $orderReference'
+                  : 'Payment reference: $orderReference',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isSwahili
+                  ? 'Malipo yatachambuliwa moja kwa moja na credits zitaongezwa.'
+                  : 'Payment will be processed automatically and credits will be added.',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
           ],
         ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CreditsScreenTheme.primaryColor,
+            ),
+            child: Text(
+              isSwahili ? 'Sawa' : 'OK',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  // Show phone verification dialog
+  void _showPhoneVerificationDialog() {
+    final localization =
+        Provider.of<LocalizationProvider>(context, listen: false);
+    final isSwahili = localization.isSwahili;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          isSwahili ? 'Thibitisha Namba ya Simu' : 'Verify Phone Number',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isSwahili
+                  ? 'Weka namba yako ya simu kwa ajili ya malipo ya Mobile Money'
+                  : 'Enter your phone number for Mobile Money payments',
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: isSwahili ? 'Namba ya Simu' : 'Phone Number',
+                hintText: isSwahili ? '0712345678' : '0712345678',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return isSwahili
+                      ? 'Tafadhali weka namba ya simu'
+                      : 'Please enter phone number';
+                }
+                if (!_isValidPhoneNumber(value)) {
+                  return isSwahili
+                      ? 'Namba lazima kuwa 07XXXXXXXX au 255XXXXXXXXX'
+                      : 'Phone number must be 07XXXXXXXX or 255XXXXXXXXX';
+                }
+                return null;
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _isSavingPhone ? null : () => Navigator.pop(context),
+            child: Text(
+              isSwahili ? 'Sitisha' : 'Cancel',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: _isSavingPhone
+                ? null
+                : () async {
+                    final phoneNumber = _phoneController.text.trim();
+                    if (_isValidPhoneNumber(phoneNumber)) {
+                      try {
+                        await _savePhoneNumber(phoneNumber);
+                        if (mounted) {
+                          Navigator.pop(context);
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isSwahili
+                                    ? 'Hitilafu katika kuhifadhi: $e'
+                                    : 'Error saving phone: $e',
+                              ),
+                              backgroundColor: CreditsScreenTheme.error,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CreditsScreenTheme.primaryColor,
+            ),
+            child: _isSavingPhone
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isSwahili ? 'Inahifadhi...' : 'Saving...',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  )
+                : Text(
+                    isSwahili ? 'Hifadhi' : 'Save',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Start connection monitoring
+  void _startConnectionMonitoring() {
+    _connectionTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _checkInternetConnection();
+    });
   }
 }
 
@@ -962,14 +893,6 @@ class _PaymentBottomSheet extends StatefulWidget {
 }
 
 class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
-  // Format price helper
-  String _formatPrice(double price) {
-    return price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -994,14 +917,16 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               children: [
                 Text(
-                  widget.isSwahili ? 'Chagua Njia ya Malipo' : 'Select Payment Method',
+                  widget.isSwahili
+                      ? 'Chagua Njia ya Malipo'
+                      : 'Select Payment Method',
                   style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -1041,7 +966,8 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                       const SizedBox(width: 12),
                       Text(
                         '•',
-                        style: TextStyle(color: CreditsScreenTheme.primaryColor),
+                        style:
+                            TextStyle(color: CreditsScreenTheme.primaryColor),
                       ),
                       const SizedBox(width: 12),
                       Text(
@@ -1113,7 +1039,7 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                 _PaymentMethodCard(
                   icon: Icons.phone_android,
                   title: 'Mobile Money',
-                  subtitle: widget.isPhoneVerified 
+                  subtitle: widget.isPhoneVerified
                       ? 'TIGO PESA, Airtel Money, Halotel (${widget.savedPhoneNumber})'
                       : 'TIGO PESA, Airtel Money, Halotel',
                   color: Colors.green,
@@ -1122,7 +1048,7 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                     widget.onPaymentMethodSelected(1);
                   },
                 ),
-                
+
                 // Card Payment (CRDB Bank)
                 _PaymentMethodCard(
                   icon: Icons.account_balance,
@@ -1136,7 +1062,8 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                 ),
 
                 // Phone Number Status (for Mobile Money)
-                if (widget.selectedPaymentMethod == 1 && !widget.isPhoneVerified)
+                if (widget.selectedPaymentMethod == 1 &&
+                    !widget.isPhoneVerified)
                   Container(
                     margin: const EdgeInsets.only(top: 16),
                     padding: const EdgeInsets.all(16),
@@ -1245,14 +1172,20 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: widget.selectedPaymentMethod >= 0 ? CreditsScreenTheme.primaryColor : Colors.grey,
+                  backgroundColor: widget.selectedPaymentMethod >= 0
+                      ? CreditsScreenTheme.primaryColor
+                      : Colors.grey,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: (widget.selectedPaymentMethod >= 0 && !widget.isProcessing && widget.hasInternetConnection && 
-                (widget.selectedPaymentMethod == 0 || (widget.selectedPaymentMethod == 1 && widget.isPhoneVerified)))
+                onPressed: (widget.selectedPaymentMethod >= 0 &&
+                        !widget.isProcessing &&
+                        widget.hasInternetConnection &&
+                        (widget.selectedPaymentMethod == 0 ||
+                            (widget.selectedPaymentMethod == 1 &&
+                                widget.isPhoneVerified)))
                     ? widget.onInitiatePayment
                     : null,
                 child: widget.isProcessing
@@ -1264,12 +1197,15 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            widget.isSwahili ? 'Inachambua...' : 'Processing...',
+                            widget.isSwahili
+                                ? 'Inachambua...'
+                                : 'Processing...',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1279,11 +1215,14 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
                         ],
                       )
                     : Text(
-                        !widget.hasInternetConnection 
-                            ? 'No Internet Connection' 
-                            : (widget.selectedPaymentMethod == 1 && !widget.isPhoneVerified)
+                        !widget.hasInternetConnection
+                            ? 'No Internet Connection'
+                            : (widget.selectedPaymentMethod == 1 &&
+                                    !widget.isPhoneVerified)
                                 ? 'Add Phone Number'
-                                : (widget.isSwahili ? 'Endelea na Malipo' : 'Continue to Payment'),
+                                : (widget.isSwahili
+                                    ? 'Endelea na Malipo'
+                                    : 'Continue to Payment'),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1294,6 +1233,107 @@ class _PaymentBottomSheetState extends State<_PaymentBottomSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Format price helper
+  String _formatPrice(double price) {
+    return price.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        );
+  }
+}
+
+// Payment Method Card Widget
+class _PaymentMethodCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _PaymentMethodCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: CreditsScreenTheme.text,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: CreditsScreenTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.check,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

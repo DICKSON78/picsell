@@ -1,7 +1,7 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const User = require('../models/User');
-const Transaction = require('../models/Transaction');
-const clickpesaService = require('../services/clickpesaService');
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const User = require("../models/User");
+const Transaction = require("../models/Transaction");
+const clickpesaService = require("../services/clickpesaService");
 
 const creditsController = {
   // Get user's credit balance
@@ -13,8 +13,8 @@ const creditsController = {
         credits: user.credits,
       });
     } catch (error) {
-      console.error('Get Balance Error:', error);
-      res.status(500).json({ error: 'Failed to get credit balance' });
+      console.error("Get Balance Error:", error);
+      res.status(500).json({ error: "Failed to get credit balance" });
     }
   },
 
@@ -26,7 +26,7 @@ const creditsController = {
 
       if (user.credits < amount) {
         return res.status(400).json({
-          error: 'Insufficient credits',
+          error: "Insufficient credits",
           credits: user.credits,
         });
       }
@@ -37,9 +37,9 @@ const creditsController = {
       // Log transaction
       await Transaction.create({
         userId: user._id,
-        type: 'usage',
+        type: "usage",
         credits: -amount,
-        description: 'Used cached photo',
+        description: "Used cached photo",
       });
 
       res.json({
@@ -48,8 +48,8 @@ const creditsController = {
         deducted: amount,
       });
     } catch (error) {
-      console.error('Deduct Credit Error:', error);
-      res.status(500).json({ error: 'Failed to deduct credit' });
+      console.error("Deduct Credit Error:", error);
+      res.status(500).json({ error: "Failed to deduct credit" });
     }
   },
 
@@ -58,35 +58,35 @@ const creditsController = {
     try {
       const packages = [
         {
-          id: 'pack_10',
-          name: '10 Credits',
+          id: "pack_10",
+          name: "10 Credits",
           credits: 10,
           price: 4.99,
           popular: false,
         },
         {
-          id: 'pack_25',
-          name: '25 Credits',
+          id: "pack_25",
+          name: "25 Credits",
           credits: 25,
           price: 9.99,
           popular: true,
-          discount: '20% off',
+          discount: "20% off",
         },
         {
-          id: 'pack_50',
-          name: '50 Credits',
+          id: "pack_50",
+          name: "50 Credits",
           credits: 50,
           price: 17.99,
           popular: false,
-          discount: '28% off',
+          discount: "28% off",
         },
         {
-          id: 'pack_100',
-          name: '100 Credits',
+          id: "pack_100",
+          name: "100 Credits",
           credits: 100,
           price: 29.99,
           popular: false,
-          discount: '40% off',
+          discount: "40% off",
         },
       ];
 
@@ -95,7 +95,7 @@ const creditsController = {
         packages,
       });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get credit packages' });
+      res.status(500).json({ error: "Failed to get credit packages" });
     }
   },
 
@@ -115,7 +115,7 @@ const creditsController = {
       const selectedPackage = packages[packageId];
 
       if (!selectedPackage) {
-        return res.status(400).json({ error: 'Invalid package' });
+        return res.status(400).json({ error: "Invalid package" });
       }
 
       // Generate unique order reference (alphanumeric only - ClickPesa requirement)
@@ -124,23 +124,24 @@ const creditsController = {
       // Create pending transaction
       const transaction = await Transaction.create({
         userId: user._id,
-        type: 'purchase',
+        type: "purchase",
         credits: selectedPackage.credits,
         amount: selectedPackage.price,
-        currency: paymentMethod === 'card' ? 'USD' : 'TZS',
+        currency: paymentMethod === "card" ? "USD" : "TZS",
         orderReference,
-        status: 'pending',
+        status: "pending",
         paymentMethod,
         description: `Purchasing ${selectedPackage.credits} credits`,
       });
 
-      if (paymentMethod === 'card') {
+      if (paymentMethod === "card") {
         // Handle CRDB bank payment
         const bankDetails = await clickpesaService.getUserBankDetails(user._id);
-        
-        if (!bankDetails || bankDetails.bankName !== 'CRDB') {
-          return res.status(400).json({ 
-            error: 'No CRDB bank details found. Please save your bank details first.' 
+
+        if (!bankDetails || bankDetails.bankName !== "CRDB") {
+          return res.status(400).json({
+            error:
+              "No CRDB bank details found. Please save your bank details first.",
           });
         }
 
@@ -148,17 +149,17 @@ const creditsController = {
         const bankPayment = await clickpesaService.processCRDBPayment(
           user._id,
           selectedPackage.price,
-          orderReference
+          orderReference,
         );
 
         if (!bankPayment.success) {
-          transaction.status = 'failed';
-          transaction.error = bankPayment.error || 'CRDB payment failed';
+          transaction.status = "failed";
+          transaction.error = bankPayment.error || "CRDB payment failed";
           await transaction.save();
-          
-          return res.status(400).json({ 
-            error: bankPayment.error || 'Failed to process CRDB payment',
-            details: bankPayment 
+
+          return res.status(400).json({
+            error: bankPayment.error || "Failed to process CRDB payment",
+            details: bankPayment,
           });
         }
 
@@ -168,7 +169,7 @@ const creditsController = {
         await user.save();
 
         // Update transaction status
-        transaction.status = 'completed';
+        transaction.status = "completed";
         transaction.completedAt = new Date();
         transaction.finalAmount = selectedPackage.price;
         await transaction.save();
@@ -178,30 +179,32 @@ const creditsController = {
           orderReference,
           amount: selectedPackage.price,
           credits: selectedPackage.credits,
-          currency: 'TZS',
-          paymentMethod: 'crdb_bank',
+          currency: "TZS",
+          paymentMethod: "crdb_bank",
           transactionId: bankPayment.transactionId,
           creditsRemaining: user.credits,
-          message: 'Payment completed successfully',
+          message: "Payment completed successfully",
         });
-      } else if (paymentMethod === 'clickpesa_card') {
+      } else if (paymentMethod === "clickpesa_card") {
         // Handle ClickPesa card payment
-        const usdAmount = await clickpesaService.convertTzsToUsd(selectedPackage.price);
-        
+        const usdAmount = await clickpesaService.convertTzsToUsd(
+          selectedPackage.price,
+        );
+
         // Preview card payment
         const preview = await clickpesaService.previewCardPayment(
           usdAmount,
-          orderReference
+          orderReference,
         );
 
         if (!preview.success) {
-          transaction.status = 'failed';
-          transaction.error = preview.error || 'Card payment preview failed';
+          transaction.status = "failed";
+          transaction.error = preview.error || "Card payment preview failed";
           await transaction.save();
-          
-          return res.status(400).json({ 
-            error: preview.error || 'Failed to preview card payment',
-            details: preview 
+
+          return res.status(400).json({
+            error: preview.error || "Failed to preview card payment",
+            details: preview,
           });
         }
 
@@ -209,17 +212,18 @@ const creditsController = {
         const cardPayment = await clickpesaService.initiateCardPayment(
           usdAmount,
           orderReference,
-          user._id.toString()
+          user._id.toString(),
         );
 
         if (!cardPayment.success) {
-          transaction.status = 'failed';
-          transaction.error = cardPayment.error || 'Card payment initiation failed';
+          transaction.status = "failed";
+          transaction.error =
+            cardPayment.error || "Card payment initiation failed";
           await transaction.save();
-          
-          return res.status(400).json({ 
-            error: cardPayment.error || 'Failed to initiate card payment',
-            details: cardPayment 
+
+          return res.status(400).json({
+            error: cardPayment.error || "Failed to initiate card payment",
+            details: cardPayment,
           });
         }
 
@@ -228,9 +232,9 @@ const creditsController = {
           orderReference,
           amount: selectedPackage.price,
           credits: selectedPackage.credits,
-          currency: 'TZS',
+          currency: "TZS",
           usdAmount,
-          paymentMethod: 'clickpesa_card',
+          paymentMethod: "clickpesa_card",
           cardPaymentLink: cardPayment.cardPaymentLink,
           clientId: cardPayment.clientId,
           transactionId: transaction._id,
@@ -238,24 +242,27 @@ const creditsController = {
       } else {
         // Handle mobile money payment
         if (!phoneNumber) {
-          return res.status(400).json({ error: 'Phone number is required for mobile money' });
+          return res
+            .status(400)
+            .json({ error: "Phone number is required for mobile money" });
         }
 
         // Preview payment with ClickPesa
         const preview = await clickpesaService.previewPayment(
           phoneNumber,
           selectedPackage.price,
-          orderReference
+          orderReference,
         );
 
         if (!preview.success) {
-          transaction.status = 'failed';
-          transaction.error = preview.error || 'Mobile money payment preview failed';
+          transaction.status = "failed";
+          transaction.error =
+            preview.error || "Mobile money payment preview failed";
           await transaction.save();
-          
-          return res.status(400).json({ 
-            error: preview.error || 'Failed to preview payment',
-            details: preview 
+
+          return res.status(400).json({
+            error: preview.error || "Failed to preview payment",
+            details: preview,
           });
         }
 
@@ -263,17 +270,18 @@ const creditsController = {
         const payment = await clickpesaService.initiatePayment(
           phoneNumber,
           selectedPackage.price,
-          orderReference
+          orderReference,
         );
 
         if (!payment.success) {
-          transaction.status = 'failed';
-          transaction.error = payment.error || 'Mobile money payment initiation failed';
+          transaction.status = "failed";
+          transaction.error =
+            payment.error || "Mobile money payment initiation failed";
           await transaction.save();
-          
-          return res.status(400).json({ 
-            error: payment.error || 'Failed to initiate payment',
-            details: payment 
+
+          return res.status(400).json({
+            error: payment.error || "Failed to initiate payment",
+            details: payment,
           });
         }
 
@@ -282,11 +290,11 @@ const creditsController = {
           orderReference,
           amount: selectedPackage.price,
           credits: selectedPackage.credits,
-          currency: 'TZS',
-          paymentMethod: 'mobile_money',
+          currency: "TZS",
+          paymentMethod: "mobile_money",
           paymentInitiated: true,
           paymentId: payment.paymentId,
-          message: 'USSD push sent to your phone. Please complete the payment.',
+          message: "USSD push sent to your phone. Please complete the payment.",
           preview: {
             availableMethods: preview.activeMethods || [],
             fee: preview.fee || 0,
@@ -296,8 +304,8 @@ const creditsController = {
         });
       }
     } catch (error) {
-      console.error('Create ClickPesa Payment Error:', error);
-      res.status(500).json({ error: 'Failed to create payment' });
+      console.error("Create ClickPesa Payment Error:", error);
+      res.status(500).json({ error: "Failed to create payment" });
     }
   },
 
@@ -308,12 +316,14 @@ const creditsController = {
       const user = req.user;
 
       if (!accountNumber || !accountName || !bankName) {
-        return res.status(400).json({ error: 'All bank details are required' });
+        return res.status(400).json({ error: "All bank details are required" });
       }
 
       // Validate CRDB account number (10 digits)
-      if (bankName === 'CRDB' && !/^\d{10}$/.test(accountNumber)) {
-        return res.status(400).json({ error: 'Invalid CRDB account number. Must be 10 digits.' });
+      if (bankName === "CRDB" && !/^\d{10}$/.test(accountNumber)) {
+        return res
+          .status(400)
+          .json({ error: "Invalid CRDB account number. Must be 10 digits." });
       }
 
       const bankDetails = {
@@ -327,15 +337,16 @@ const creditsController = {
 
       res.json({
         success: true,
-        message: 'Bank details saved successfully',
+        message: "Bank details saved successfully",
         bankDetails: {
           ...bankDetails,
-          accountNumber: accountNumber.slice(0, 4) + '****' + accountNumber.slice(-4), // Mask account number
-        }
+          accountNumber:
+            accountNumber.slice(0, 4) + "****" + accountNumber.slice(-4), // Mask account number
+        },
       });
     } catch (error) {
-      console.error('Save Bank Details Error:', error);
-      res.status(500).json({ error: 'Failed to save bank details' });
+      console.error("Save Bank Details Error:", error);
+      res.status(500).json({ error: "Failed to save bank details" });
     }
   },
 
@@ -349,7 +360,7 @@ const creditsController = {
         return res.json({
           success: true,
           hasBankDetails: false,
-          message: 'No bank details found'
+          message: "No bank details found",
         });
       }
 
@@ -357,16 +368,19 @@ const creditsController = {
         success: true,
         hasBankDetails: true,
         bankDetails: {
-          accountNumber: bankDetails.accountNumber.slice(0, 4) + '****' + bankDetails.accountNumber.slice(-4),
+          accountNumber:
+            bankDetails.accountNumber.slice(0, 4) +
+            "****" +
+            bankDetails.accountNumber.slice(-4),
           accountName: bankDetails.accountName,
           bankName: bankDetails.bankName,
           isDefault: bankDetails.isDefault,
-          savedAt: bankDetails.savedAt
-        }
+          savedAt: bankDetails.savedAt,
+        },
       });
     } catch (error) {
-      console.error('Get Bank Details Error:', error);
-      res.status(500).json({ error: 'Failed to get bank details' });
+      console.error("Get Bank Details Error:", error);
+      res.status(500).json({ error: "Failed to get bank details" });
     }
   },
 
@@ -374,16 +388,16 @@ const creditsController = {
   async getExchangeRate(req, res) {
     try {
       const exchangeRate = await clickpesaService.getExchangeRate();
-      
+
       res.json({
         success: true,
         exchangeRate,
         lastUpdated: new Date(),
-        currency: 'TZS to USD'
+        currency: "TZS to USD",
       });
     } catch (error) {
-      console.error('Get Exchange Rate Error:', error);
-      res.status(500).json({ error: 'Failed to get exchange rate' });
+      console.error("Get Exchange Rate Error:", error);
+      res.status(500).json({ error: "Failed to get exchange rate" });
     }
   },
 
@@ -394,17 +408,20 @@ const creditsController = {
       const user = req.user;
 
       // Retrieve payment intent from Stripe
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const paymentIntent =
+        await stripe.paymentIntents.retrieve(paymentIntentId);
 
-      if (paymentIntent.status !== 'succeeded') {
-        return res.status(400).json({ error: 'Payment not completed' });
+      if (paymentIntent.status !== "succeeded") {
+        return res.status(400).json({ error: "Payment not completed" });
       }
 
       // Check if already processed
-      const existingTransaction = await Transaction.findOne({ paymentIntentId });
+      const existingTransaction = await Transaction.findOne({
+        paymentIntentId,
+      });
 
       if (existingTransaction) {
-        return res.status(400).json({ error: 'Payment already processed' });
+        return res.status(400).json({ error: "Payment already processed" });
       }
 
       const credits = parseInt(paymentIntent.metadata.credits);
@@ -418,7 +435,7 @@ const creditsController = {
       // Log transaction
       await Transaction.create({
         userId: user._id,
-        type: 'purchase',
+        type: "purchase",
         credits,
         amount,
         paymentIntentId,
@@ -431,8 +448,8 @@ const creditsController = {
         purchased: credits,
       });
     } catch (error) {
-      console.error('Confirm Payment Error:', error);
-      res.status(500).json({ error: 'Failed to confirm payment' });
+      console.error("Confirm Payment Error:", error);
+      res.status(500).json({ error: "Failed to confirm payment" });
     }
   },
 
@@ -446,7 +463,7 @@ const creditsController = {
 
       res.json({
         success: true,
-        transactions: transactions.map(t => ({
+        transactions: transactions.map((t) => ({
           id: t._id,
           type: t.type,
           credits: t.credits,
@@ -456,8 +473,8 @@ const creditsController = {
         })),
       });
     } catch (error) {
-      console.error('Get Transaction History Error:', error);
-      res.status(500).json({ error: 'Failed to get transaction history' });
+      console.error("Get Transaction History Error:", error);
+      res.status(500).json({ error: "Failed to get transaction history" });
     }
   },
 };
