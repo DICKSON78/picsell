@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/lowercase-test.js", 
+      "src": "api/index.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/lowercase-test",
-      "dest": "/api/lowercase-test.js"
+      "src": "/api/(.*)",
+      "dest": "/api/index.js"
     }
   ]
 }
