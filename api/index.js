@@ -8,8 +8,24 @@ const crypto = require("crypto");
 
 // Initialize Firebase Admin with error handling
 let db = null;
+let firebaseInitialized = false;
+
 if (!admin.apps.length) {
   try {
+    // Check if all required Firebase env vars are present
+    const requiredVars = [
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_PRIVATE_KEY_ID",
+      "FIREBASE_PRIVATE_KEY",
+      "FIREBASE_CLIENT_EMAIL",
+      "FIREBASE_CLIENT_ID",
+    ];
+    
+    const missingVars = requiredVars.filter((v) => !process.env[v]);
+    if (missingVars.length > 0) {
+      console.warn("Missing Firebase env vars:", missingVars);
+    }
+
     const serviceAccount = {
       projectId: process.env.FIREBASE_PROJECT_ID,
       privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
@@ -26,8 +42,10 @@ if (!admin.apps.length) {
       credential: admin.credential.cert(serviceAccount),
     });
     db = admin.firestore();
+    firebaseInitialized = true;
+    console.log("✅ Firebase Admin SDK initialized successfully");
   } catch (err) {
-    console.error("Firebase initialization error:", err.message);
+    console.error("❌ Firebase initialization error:", err.message);
   }
 }
 
@@ -36,27 +54,42 @@ async function verifyToken(req) {
   try {
     const token = req.headers.authorization?.replace("Bearer ", "");
     if (!token) {
-      console.warn("No token in headers");
+      console.warn("⚠️ No token in headers");
       return null;
     }
 
+    console.log("🔍 Verifying token...");
+
     // Try to verify as Firebase ID token first
-    if (admin && admin.auth) {
+    if (firebaseInitialized && admin && admin.auth) {
       try {
+        console.log("📝 Attempting Firebase token verification...");
         const decodedToken = await admin.auth().verifyIdToken(token);
         console.log(`✅ Token verified for user: ${decodedToken.uid}`);
         return { userId: decodedToken.uid, uid: decodedToken.uid };
       } catch (err) {
-        console.error("Firebase token verification failed:", err.message);
+        console.error("❌ Firebase token verification failed:", err.message);
         // Fall through to try JWT verification
       }
     }
 
     // Fallback: try regular JWT verification if Firebase fails
+    if (!firebaseInitialized) {
+      console.log("⚠️ Firebase not initialized, trying JWT verification...");
+    } else {
+      console.log("⚠️ Firebase verification failed, trying JWT verification...");
+    }
+
     try {
-      return jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
-      console.error("JWT verification failed:", err.message);
+      if (!process.env.JWT_SECRET) {
+        console.error("❌ JWT_SECRET not configured");
+        return null;
+      }
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("✅ JWT verified successfully");
+      return decoded;
+    } catch (jwtErr) {
+      console.error("❌ JWT verification also failed:", jwtErr.message);
       return null;
     }
   } catch (err) {
@@ -115,7 +148,9 @@ module.exports = async (req, res) => {
 async function handleCredits(req, res) {
   // Check auth for all endpoints
   const decoded = await verifyToken(req);
+  console.log("🔐 Auth result:", decoded ? `✅ User: ${decoded.userId || decoded.uid}` : "❌ No auth");
   if (!decoded) {
+    console.error("❌ Authentication failed - returning 401");
     return res.status(401).json({ error: "Authentication required" });
   }
 
