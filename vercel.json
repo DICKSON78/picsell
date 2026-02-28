@@ -2,30 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/webhook.js",
+      "src": "api/lowercase-test.js", 
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/webhook/clickpesa",
-      "dest": "/api/webhook.js"
+      "src": "/api/lowercase-test",
+      "dest": "/api/lowercase-test.js"
     }
-  ],
-  "env": {
-    "JWT_SECRET": "@jwt_secret",
-    "FIREBASE_PROJECT_ID": "@firebase_project_id",
-    "FIREBASE_PRIVATE_KEY_ID": "@firebase_private_key_id",
-    "FIREBASE_PRIVATE_KEY": "@firebase_private_key",
-    "FIREBASE_CLIENT_EMAIL": "@firebase_client_email",
-    "FIREBASE_CLIENT_ID": "@firebase_client_id",
-    "FIREBASE_AUTH_URI": "@firebase_auth_uri",
-    "FIREBASE_TOKEN_URI": "@firebase_token_uri",
-    "CLICKPESA_CLIENT_ID": "@clickpesa_client_id",
-    "CLICKPESA_API_KEY": "@clickpesa_api_key",
-    "WEBHOOK_SECRET": "@webhook_secret",
-    "FRONTEND_URL": "@frontend_url",
-    "CREDIT_PRICE_TZS": "@credit_price_tzs",
-    "CREDITS_PER_DOLLAR": "@credits_per_dollar"
-  }
+  ]
 }

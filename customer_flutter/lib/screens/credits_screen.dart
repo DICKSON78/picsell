@@ -225,7 +225,42 @@ class _CreditsScreenState extends State<CreditsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: _isSavingPhone ? null : () => Navigator.pop(context),
+            child: Text(
+              isSwahili ? 'Sitisha' : 'Cancel',
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: _isSavingPhone 
+                ? null 
+                : () async {
+                    final phoneNumber = _phoneController.text.trim();
+                    if (_isValidPhoneNumber(phoneNumber)) {
+                      try {
+                        await _savePhoneNumber(phoneNumber);
+                        if (mounted) {
+                          Navigator.pop(context);
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isSwahili 
+                                  ? 'Hitilafu katika kuhifadhi: $e' 
+                                  : 'Error saving phone: $e',
+                              ),
+                              backgroundColor: CreditsScreenTheme.error,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CreditsScreenTheme.primaryColor,
+            ),
             child: _isSavingPhone
                 ? Row(
                     mainAxisSize: MainAxisSize.min,

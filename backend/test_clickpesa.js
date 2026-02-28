@@ -5,6 +5,7 @@
  * Run this script to test if ClickPesa API is working correctly
  */
 
+require('dotenv').config();
 const clickpesaService = require('./src/services/clickpesaService');
 
 async function testClickPesaIntegration() {

@@ -118,8 +118,8 @@ const creditsController = {
         return res.status(400).json({ error: 'Invalid package' });
       }
 
-      // Generate unique order reference
-      const orderReference = `CRED_${Date.now()}_${user._id.toString().slice(-6)}`;
+      // Generate unique order reference (alphanumeric only - ClickPesa requirement)
+      const orderReference = `CRED${Date.now()}${user._id.toString().slice(-6)}`;
 
       // Create pending transaction
       const transaction = await Transaction.create({

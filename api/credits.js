@@ -1,17 +1,25 @@
 // Vercel Serverless Function for Credits API
-const mongoose = require('mongoose');
 const cors = require('cors');
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// Firebase Admin
+const admin = require('firebase-admin');
 
-// Models
-const User = require('../backend/src/models/User');
-const Transaction = require('../backend/src/models/Transaction');
-const clickpesaService = require('../backend/src/services/clickpesaService');
+// Initialize Firebase
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      privateKeyId: process.env.FIREBASE_PRIVATE_KEY_ID,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      clientId: process.env.FIREBASE_CLIENT_ID,
+      authUri: process.env.FIREBASE_AUTH_URI,
+      tokenUri: process.env.FIREBASE_TOKEN_URI,
+    }),
+  });
+}
+
+const db = admin.firestore();
 
 // CORS middleware
 const corsHandler = cors({
