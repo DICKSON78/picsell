@@ -508,6 +508,29 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _isProcessing = true;
       });
 
+      // Check if user is authenticated
+      final token = await _apiService.getToken();
+      if (token == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isSwahili
+                  ? 'Tafadhali ingia kwenye akaunti yako ili kuendelea'
+                  : 'Please log in to continue',
+            ),
+            backgroundColor: CreditsScreenTheme.error,
+          ),
+        );
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false,
+          );
+        }
+        return;
+      }
+
       // Create payment request with saved phone number
       // Format phone number for ClickPesa API
       String formattedPhone = _formatPhoneNumberForClickPesa(_savedPhoneNumber);
@@ -530,6 +553,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
       print('📱 Phone verification:');
       print('   Original: $_savedPhoneNumber');
       print('   Formatted: $formattedPhone');
+      print('   Auth Token: ${token.substring(0, 20)}...');
 
       final response = await _apiService.createPayment(
         packageId: 'pack_25', // Default to popular package
@@ -572,14 +596,43 @@ class _CreditsScreenState extends State<CreditsScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isSwahili ? 'Hitilafu: $e' : 'Error: $e',
+      print('❌ Payment error: $e');
+      String errorMsg = e.toString();
+      
+      // Check if it's an authentication error
+      if (errorMsg.contains('Authentication required') || 
+          errorMsg.contains('401') ||
+          errorMsg.contains('Invalid authentication')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isSwahili
+                  ? 'Tafadhali ingia tena kwenye akaunti yako'
+                  : 'Session expired. Please log in again.',
+            ),
+            backgroundColor: CreditsScreenTheme.error,
+            duration: const Duration(seconds: 3),
           ),
-          backgroundColor: CreditsScreenTheme.error,
-        ),
-      );
+        );
+        if (mounted) {
+          Future.delayed(const Duration(seconds: 1), () {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/login',
+              (route) => false,
+            );
+          });
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isSwahili ? 'Hitilafu: $e' : 'Error: $e',
+            ),
+            backgroundColor: CreditsScreenTheme.error,
+          ),
+        );
+      }
     } finally {
       setState(() {
         _isProcessing = false;

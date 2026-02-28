@@ -314,6 +314,15 @@ class ApiService {
     String? phoneNumber,
     required String paymentMethod,
   }) async {
+    // Ensure token is available
+    final token = await getToken();
+    if (token == null) {
+      return {
+        'success': false,
+        'error': 'Authentication required. Please log in again.',
+      };
+    }
+
     final response = await http.post(
       Uri.parse('$baseUrl/credits/create-payment'),
       headers: await _getHeaders(),
