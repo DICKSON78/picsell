@@ -457,13 +457,17 @@ class _CreditsScreenState extends State<CreditsScreen> {
   Future<void> _checkInternetConnection() async {
     try {
       final hasConnection = await _apiService.testConnection();
-      setState(() {
-        _hasInternetConnection = hasConnection['success'] == true;
-      });
+      if (mounted) {
+        setState(() {
+          _hasInternetConnection = hasConnection['success'] == true;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _hasInternetConnection = false;
-      });
+      if (mounted) {
+        setState(() {
+          _hasInternetConnection = false;
+        });
+      }
     }
   }
 
@@ -504,9 +508,11 @@ class _CreditsScreenState extends State<CreditsScreen> {
     final isSwahili = localization.isSwahili;
 
     try {
-      setState(() {
-        _isProcessing = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = true;
+        });
+      }
 
       // Check if user is authenticated
       final token = await _apiService.getToken();
@@ -598,9 +604,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
     } catch (e) {
       print('❌ Payment error: $e');
       String errorMsg = e.toString();
-      
+
       // Check if it's an authentication error
-      if (errorMsg.contains('Authentication required') || 
+      if (errorMsg.contains('Authentication required') ||
           errorMsg.contains('401') ||
           errorMsg.contains('Invalid authentication')) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -634,9 +640,11 @@ class _CreditsScreenState extends State<CreditsScreen> {
         );
       }
     } finally {
-      setState(() {
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
     }
   }
 
@@ -664,7 +672,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
       if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
         final userData =
             await _firestoreService.getUserData(auth.currentUser!.id);
-        if (userData != null) {
+        if (userData != null && mounted) {
           setState(() {
             _savedPhoneNumber = userData['phoneNumber'] ?? '';
             _isPhoneVerified = userData['phoneVerified'] ?? false;
@@ -679,9 +687,11 @@ class _CreditsScreenState extends State<CreditsScreen> {
   // Save phone number
   Future<void> _savePhoneNumber(String phoneNumber) async {
     try {
-      setState(() {
-        _isSavingPhone = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isSavingPhone = true;
+        });
+      }
 
       final auth = Provider.of<AuthProvider>(context, listen: false);
       if (auth.currentUser != null && auth.currentUser!.id.isNotEmpty) {
@@ -690,18 +700,22 @@ class _CreditsScreenState extends State<CreditsScreen> {
           'phoneVerified': true,
           'phoneUpdatedAt': DateTime.now().toIso8601String(),
         });
-        setState(() {
-          _savedPhoneNumber = phoneNumber;
-          _isPhoneVerified = true;
-        });
+        if (mounted) {
+          setState(() {
+            _savedPhoneNumber = phoneNumber;
+            _isPhoneVerified = true;
+          });
+        }
       }
     } catch (e) {
       print('Error saving phone number: $e');
       rethrow; // Re-throw to handle in dialog
     } finally {
-      setState(() {
-        _isSavingPhone = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSavingPhone = false;
+        });
+      }
     }
   }
 
