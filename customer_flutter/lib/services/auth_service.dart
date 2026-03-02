@@ -1,10 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
-import '../models/user_model.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import '../firebase_options.dart';
+import '../models/user_model.dart';
 import 'api_service.dart';
 
 class AuthService {
@@ -17,21 +18,14 @@ class AuthService {
   String? _verificationId;
   int? _resendToken;
 
-  /// Ensure Firebase is initialized before using any Firebase services
-  Future<void> _ensureFirebaseInitialized() async {
-    if (Firebase.apps.isEmpty) {
-      debugPrint('Firebase not initialized, initializing now...');
-      try {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-        debugPrint('Firebase initialized successfully in AuthService');
-      } catch (e) {
-        debugPrint('Firebase initialization error: $e');
-        throw 'Imeshindwa kuanzisha Firebase. Jaribu tena.';
-      }
-    }
-  }
+  // Stream of auth state changes
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Get current user
+  User? get currentUser => _auth.currentUser;
+
+  // Check if user is logged in
+  bool get isLoggedIn => currentUser != null;
 
   FirebaseAuth get _auth {
     _authInstance ??= FirebaseAuth.instance;
@@ -50,269 +44,151 @@ class AuthService {
     return _googleSignInInstance!;
   }
 
-  // Get current user
-  User? get currentUser => _auth.currentUser;
+  // ==================== USER DATA ====================
 
-  // Stream of auth state changes
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Check if user is logged in
-  bool get isLoggedIn => currentUser != null;
+  // Get user data from Firestore
+  Future<UserModel?> getUserData(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (doc.exists) {
+        return UserModel.fromFirestore(doc);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Get User Data Error: $e');
+      return null;
+    }
+  }
 
   // ==================== GOOGLE SIGN IN ====================
 
-  /// Sign in with Google
-  Future<UserModel?> signInWithGoogle() async {
+  /// Link Google account to existing email account
+  /// User must be logged in with email first
+  Future<bool> linkGoogleAccount() async {
     try {
       // Ensure Firebase is initialized
       await _ensureFirebaseInitialized();
 
-      // Trigger the authentication flow
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw 'Tafadhali ingia kwanza na barua-pepe kabla ya kuunganisha Google';
+      }
+
+      // Trigger Google sign-in
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
         // User cancelled the sign-in
-        return null;
+        return false;
       }
 
       // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
-      // Create a new credential
+      // Create Google credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in to Firebase with the Google credential
-      final userCredential = await _auth.signInWithCredential(credential);
+      // Link the credential to the current user
+      await currentUser.linkWithCredential(credential);
+      debugPrint(
+          '✅ Google account linked successfully to ${currentUser.email}');
 
-      if (userCredential.user == null) return null;
+      // Update user profile if needed
+      if (currentUser.displayName == null && googleUser.displayName != null) {
+        await currentUser.updateDisplayName(googleUser.displayName);
+      }
+      if (currentUser.photoURL == null && googleUser.photoUrl != null) {
+        await currentUser.updatePhotoURL(googleUser.photoUrl);
+      }
+
+      // Refresh current user
+      await currentUser.reload();
+
+      // Get new Firebase ID token
+      final idToken = await currentUser.getIdToken();
+      if (idToken != null) {
+        await ApiService().setToken(idToken);
+        debugPrint('✅ Firebase ID token refreshed after linking Google');
+      }
+
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'credential-already-in-use') {
+        throw 'Akaunti hii ya Google tayari imetengenezwa kwa akaunti nyingine';
+      } else if (e.code == 'provider-already-linked') {
+        throw 'Google akaunti tayari imeunganishwa na akaunti hii';
+      }
+      throw _handleAuthError(e);
+    } catch (e) {
+      debugPrint('Link Google Error: $e');
+      throw e.toString();
+    }
+  }
+
+  // Login with email and password
+  Future<UserModel?> loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      // Ensure Firebase is initialized
+      await _ensureFirebaseInitialized();
+
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      if (credential.user == null) return null;
+
+      // Update last login
+      await _firestore.collection('users').doc(credential.user!.uid).update({
+        'lastLogin': Timestamp.now(),
+      });
 
       // Get Firebase ID token and save it to ApiService
       try {
-        final idToken = await userCredential.user!.getIdToken();
+        final idToken = await credential.user!.getIdToken();
         if (idToken != null) {
           await ApiService().setToken(idToken);
-          debugPrint('✅ Firebase ID token saved to ApiService (Google Sign-In)');
+          debugPrint('✅ Firebase ID token saved to ApiService');
         }
       } catch (e) {
         debugPrint('⚠️ Failed to save token: $e');
       }
 
-      // Check if user exists in Firestore
-      final existingUser = await getUserData(userCredential.user!.uid);
-
-      if (existingUser != null) {
-        // Update last login
-        await _firestore.collection('users').doc(userCredential.user!.uid).update({
-          'lastLogin': Timestamp.now(),
-        });
-        return existingUser;
-      }
-
-      // Create new user in Firestore
-      final userModel = UserModel(
-        id: userCredential.user!.uid,
-        email: userCredential.user!.email ?? '',
-        name: userCredential.user!.displayName ?? googleUser.displayName ?? 'Mtumiaji',
-        phone: userCredential.user!.phoneNumber ?? '',
-        photoUrl: userCredential.user!.photoURL ?? googleUser.photoUrl,
-        credits: 2, // Welcome bonus - 2 free credits for new users
-        createdAt: DateTime.now(),
-        lastLogin: DateTime.now(),
-      );
-
-      await _firestore
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .set(userModel.toFirestore());
-
-      // Create welcome bonus transaction
-      await _firestore.collection('transactions').add({
-        'userId': userCredential.user!.uid,
-        'type': 'bonus',
-        'credits': 2,
-        'description': 'Welcome bonus credits - Google Sign In',
-        'createdAt': Timestamp.now(),
-      });
-
-      return userModel;
+      // Get user data
+      return await getUserData(credential.user!.uid);
     } on FirebaseAuthException catch (e) {
-      debugPrint('Google Sign In Error: ${e.message}');
       throw _handleAuthError(e);
-    } catch (e) {
-      debugPrint('Google Sign In Error: $e');
-      throw 'Imeshindwa kuingia na Google. Jaribu tena.';
-    }
-  }
-
-  /// Sign out from Google
-  Future<void> signOutGoogle() async {
-    try {
-      await _googleSignIn.signOut();
-    } catch (e) {
-      debugPrint('Google Sign Out Error: $e');
     }
   }
 
   // ==================== PHONE OTP AUTHENTICATION ====================
 
-  /// Send OTP to phone number
-  Future<void> sendOTP({
-    required String phoneNumber,
-    required Function(String verificationId) onCodeSent,
-    required Function(String error) onError,
-    required Function(UserModel? user) onAutoVerified,
-  }) async {
+  /// Refresh Firebase ID token from current user
+  /// Call this before making important API calls like payment
+  Future<String?> refreshToken() async {
     try {
-      // Ensure Firebase is initialized
-      await _ensureFirebaseInitialized();
+      final user = currentUser;
+      if (user == null) return null;
 
-      // Format phone number (ensure it has country code)
-      String formattedPhone = phoneNumber.trim();
-      if (!formattedPhone.startsWith('+')) {
-        // Default to Tanzania country code if not specified
-        if (formattedPhone.startsWith('0')) {
-          formattedPhone = '+255${formattedPhone.substring(1)}';
-        } else {
-          formattedPhone = '+255$formattedPhone';
-        }
+      // Force refresh the token
+      final idToken = await user.getIdToken(true); // true = force refresh
+      if (idToken != null) {
+        await ApiService().setToken(idToken);
+        debugPrint('✅ Token refreshed successfully');
+        return idToken;
       }
-
-      await _auth.verifyPhoneNumber(
-        phoneNumber: formattedPhone,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-verification (Android only)
-          try {
-            final user = await _signInWithPhoneCredential(credential, formattedPhone);
-            onAutoVerified(user);
-          } catch (e) {
-            onError(e.toString());
-          }
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          debugPrint('OTP Verification Failed: ${e.message}');
-          onError(_handlePhoneAuthError(e));
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          _verificationId = verificationId;
-          _resendToken = resendToken;
-          onCodeSent(verificationId);
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          _verificationId = verificationId;
-        },
-        forceResendingToken: _resendToken,
-      );
+      return null;
     } catch (e) {
-      debugPrint('Send OTP Error: $e');
-      onError('Imeshindwa kutuma OTP. Jaribu tena.');
+      debugPrint('⚠️ Token refresh failed: $e');
+      return null;
     }
-  }
-
-  /// Verify OTP code
-  Future<UserModel?> verifyOTP({
-    required String otp,
-    required String phoneNumber,
-  }) async {
-    try {
-      // Ensure Firebase is initialized
-      await _ensureFirebaseInitialized();
-
-      if (_verificationId == null) {
-        throw 'Hakuna OTP iliyotumwa. Tafadhali omba OTP mpya.';
-      }
-
-      // Create a PhoneAuthCredential with the OTP
-      final credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: otp,
-      );
-
-      return await _signInWithPhoneCredential(credential, phoneNumber);
-    } on FirebaseAuthException catch (e) {
-      debugPrint('OTP Verification Error: ${e.message}');
-      throw _handlePhoneAuthError(e);
-    } catch (e) {
-      debugPrint('OTP Verification Error: $e');
-      if (e is String) rethrow;
-      throw 'OTP si sahihi. Jaribu tena.';
-    }
-  }
-
-  /// Sign in with phone credential
-  Future<UserModel?> _signInWithPhoneCredential(
-    PhoneAuthCredential credential,
-    String phoneNumber,
-  ) async {
-    final userCredential = await _auth.signInWithCredential(credential);
-
-    if (userCredential.user == null) return null;
-
-    // Format phone for storage
-    String formattedPhone = phoneNumber.trim();
-    if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '+255${formattedPhone.substring(1)}';
-      } else {
-        formattedPhone = '+255$formattedPhone';
-      }
-    }
-
-    // Check if user exists
-    final existingUser = await getUserData(userCredential.user!.uid);
-
-    if (existingUser != null) {
-      // Update last login and phone
-      await _firestore.collection('users').doc(userCredential.user!.uid).update({
-        'lastLogin': Timestamp.now(),
-        'phone': formattedPhone,
-      });
-      return existingUser.copyWith(phone: formattedPhone);
-    }
-
-    // Create new user
-    final userModel = UserModel(
-      id: userCredential.user!.uid,
-      email: '',
-      name: 'Mtumiaji',
-      phone: formattedPhone,
-      credits: 2, // Welcome bonus - 2 free credits for new users
-      createdAt: DateTime.now(),
-      lastLogin: DateTime.now(),
-    );
-
-    await _firestore
-        .collection('users')
-        .doc(userCredential.user!.uid)
-        .set(userModel.toFirestore());
-
-    // Create welcome bonus transaction
-    await _firestore.collection('transactions').add({
-      'userId': userCredential.user!.uid,
-      'type': 'bonus',
-      'credits': 2,
-      'description': 'Welcome bonus credits - Phone OTP',
-      'createdAt': Timestamp.now(),
-    });
-
-    return userModel;
-  }
-
-  /// Resend OTP
-  Future<void> resendOTP({
-    required String phoneNumber,
-    required Function(String verificationId) onCodeSent,
-    required Function(String error) onError,
-  }) async {
-    await sendOTP(
-      phoneNumber: phoneNumber,
-      onCodeSent: onCodeSent,
-      onError: onError,
-      onAutoVerified: (_) {},
-    );
   }
 
   // ==================== EMAIL AUTHENTICATION ====================
@@ -370,58 +246,193 @@ class AuthService {
     }
   }
 
-  // Login with email and password
-  Future<UserModel?> loginWithEmail({
-    required String email,
-    required String password,
+  /// Resend OTP
+  Future<void> resendOTP({
+    required String phoneNumber,
+    required Function(String verificationId) onCodeSent,
+    required Function(String error) onError,
+  }) async {
+    await sendOTP(
+      phoneNumber: phoneNumber,
+      onCodeSent: onCodeSent,
+      onError: onError,
+      onAutoVerified: (_) {},
+    );
+  }
+
+  // Reset password
+  Future<void> resetPassword(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  /// Send OTP to phone number
+  Future<void> sendOTP({
+    required String phoneNumber,
+    required Function(String verificationId) onCodeSent,
+    required Function(String error) onError,
+    required Function(UserModel? user) onAutoVerified,
   }) async {
     try {
       // Ensure Firebase is initialized
       await _ensureFirebaseInitialized();
 
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      // Format phone number (ensure it has country code)
+      String formattedPhone = phoneNumber.trim();
+      if (!formattedPhone.startsWith('+')) {
+        // Default to Tanzania country code if not specified
+        if (formattedPhone.startsWith('0')) {
+          formattedPhone = '+255${formattedPhone.substring(1)}';
+        } else {
+          formattedPhone = '+255$formattedPhone';
+        }
+      }
+
+      await _auth.verifyPhoneNumber(
+        phoneNumber: formattedPhone,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Auto-verification (Android only)
+          try {
+            final user =
+                await _signInWithPhoneCredential(credential, formattedPhone);
+            onAutoVerified(user);
+          } catch (e) {
+            onError(e.toString());
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          debugPrint('OTP Verification Failed: ${e.message}');
+          onError(_handlePhoneAuthError(e));
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          onCodeSent(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+        },
+        forceResendingToken: _resendToken,
+      );
+    } catch (e) {
+      debugPrint('Send OTP Error: $e');
+      onError('Imeshindwa kutuma OTP. Jaribu tena.');
+    }
+  }
+
+  /// Sign in with Google
+  Future<UserModel?> signInWithGoogle() async {
+    try {
+      // Ensure Firebase is initialized
+      await _ensureFirebaseInitialized();
+
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // User cancelled the sign-in
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
       );
 
-      if (credential.user == null) return null;
+      // Sign in to Firebase with the Google credential
+      final userCredential = await _auth.signInWithCredential(credential);
 
-      // Update last login
-      await _firestore.collection('users').doc(credential.user!.uid).update({
-        'lastLogin': Timestamp.now(),
-      });
+      if (userCredential.user == null) return null;
 
       // Get Firebase ID token and save it to ApiService
       try {
-        final idToken = await credential.user!.getIdToken();
+        final idToken = await userCredential.user!.getIdToken();
         if (idToken != null) {
           await ApiService().setToken(idToken);
-          debugPrint('✅ Firebase ID token saved to ApiService');
+          debugPrint(
+              '✅ Firebase ID token saved to ApiService (Google Sign-In)');
         }
       } catch (e) {
         debugPrint('⚠️ Failed to save token: $e');
       }
 
-      // Get user data
-      return await getUserData(credential.user!.uid);
+      // Check if user exists in Firestore
+      final existingUser = await getUserData(userCredential.user!.uid);
+
+      if (existingUser != null) {
+        // Update last login
+        await _firestore
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .update({
+          'lastLogin': Timestamp.now(),
+        });
+        return existingUser;
+      }
+
+      // Create new user in Firestore
+      final userModel = UserModel(
+        id: userCredential.user!.uid,
+        email: userCredential.user!.email ?? '',
+        name: userCredential.user!.displayName ??
+            googleUser.displayName ??
+            'Mtumiaji',
+        phone: userCredential.user!.phoneNumber ?? '',
+        photoUrl: userCredential.user!.photoURL ?? googleUser.photoUrl,
+        credits: 2, // Welcome bonus - 2 free credits for new users
+        createdAt: DateTime.now(),
+        lastLogin: DateTime.now(),
+      );
+
+      await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .set(userModel.toFirestore());
+
+      // Create welcome bonus transaction
+      await _firestore.collection('transactions').add({
+        'userId': userCredential.user!.uid,
+        'type': 'bonus',
+        'credits': 2,
+        'description': 'Welcome bonus credits - Google Sign In',
+        'createdAt': Timestamp.now(),
+      });
+
+      return userModel;
     } on FirebaseAuthException catch (e) {
+      debugPrint('Google Sign In Error: ${e.message}');
       throw _handleAuthError(e);
+    } catch (e) {
+      debugPrint('Google Sign In Error: $e');
+      throw 'Imeshindwa kuingia na Google. Jaribu tena.';
     }
   }
 
-  // ==================== USER DATA ====================
+  // ==================== SIGN OUT ====================
 
-  // Get user data from Firestore
-  Future<UserModel?> getUserData(String userId) async {
+  // Sign out
+  Future<void> signOut() async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
-      if (doc.exists) {
-        return UserModel.fromFirestore(doc);
-      }
-      return null;
+      await signOutGoogle();
     } catch (e) {
-      debugPrint('Get User Data Error: $e');
-      return null;
+      // Ignore Google sign out errors
+    }
+    await _auth.signOut();
+    _verificationId = null;
+    _resendToken = null;
+  }
+
+  /// Sign out from Google
+  Future<void> signOutGoogle() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('Google Sign Out Error: $e');
     }
   }
 
@@ -442,23 +453,50 @@ class AuthService {
     }
   }
 
-  // ==================== SIGN OUT ====================
-
-  // Sign out
-  Future<void> signOut() async {
+  /// Verify OTP code
+  Future<UserModel?> verifyOTP({
+    required String otp,
+    required String phoneNumber,
+  }) async {
     try {
-      await signOutGoogle();
+      // Ensure Firebase is initialized
+      await _ensureFirebaseInitialized();
+
+      if (_verificationId == null) {
+        throw 'Hakuna OTP iliyotumwa. Tafadhali omba OTP mpya.';
+      }
+
+      // Create a PhoneAuthCredential with the OTP
+      final credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: otp,
+      );
+
+      return await _signInWithPhoneCredential(credential, phoneNumber);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('OTP Verification Error: ${e.message}');
+      throw _handlePhoneAuthError(e);
     } catch (e) {
-      // Ignore Google sign out errors
+      debugPrint('OTP Verification Error: $e');
+      if (e is String) rethrow;
+      throw 'OTP si sahihi. Jaribu tena.';
     }
-    await _auth.signOut();
-    _verificationId = null;
-    _resendToken = null;
   }
 
-  // Reset password
-  Future<void> resetPassword(String email) async {
-    await _auth.sendPasswordResetEmail(email: email);
+  /// Ensure Firebase is initialized before using any Firebase services
+  Future<void> _ensureFirebaseInitialized() async {
+    if (Firebase.apps.isEmpty) {
+      debugPrint('Firebase not initialized, initializing now...');
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+        debugPrint('Firebase initialized successfully in AuthService');
+      } catch (e) {
+        debugPrint('Firebase initialization error: $e');
+        throw 'Imeshindwa kuanzisha Firebase. Jaribu tena.';
+      }
+    }
   }
 
   // ==================== ERROR HANDLING ====================
@@ -489,6 +527,8 @@ class AuthService {
     }
   }
 
+  // ==================== LINK GOOGLE ACCOUNT ====================
+
   // Handle phone auth errors
   String _handlePhoneAuthError(FirebaseAuthException e) {
     switch (e.code) {
@@ -507,5 +547,69 @@ class AuthService {
       default:
         return e.message ?? 'Tatizo limetokea. Jaribu tena.';
     }
+  }
+
+  // ==================== TOKEN REFRESH ====================
+
+  /// Sign in with phone credential
+  Future<UserModel?> _signInWithPhoneCredential(
+    PhoneAuthCredential credential,
+    String phoneNumber,
+  ) async {
+    final userCredential = await _auth.signInWithCredential(credential);
+
+    if (userCredential.user == null) return null;
+
+    // Format phone for storage
+    String formattedPhone = phoneNumber.trim();
+    if (!formattedPhone.startsWith('+')) {
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+255${formattedPhone.substring(1)}';
+      } else {
+        formattedPhone = '+255$formattedPhone';
+      }
+    }
+
+    // Check if user exists
+    final existingUser = await getUserData(userCredential.user!.uid);
+
+    if (existingUser != null) {
+      // Update last login and phone
+      await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .update({
+        'lastLogin': Timestamp.now(),
+        'phone': formattedPhone,
+      });
+      return existingUser.copyWith(phone: formattedPhone);
+    }
+
+    // Create new user
+    final userModel = UserModel(
+      id: userCredential.user!.uid,
+      email: '',
+      name: 'Mtumiaji',
+      phone: formattedPhone,
+      credits: 2, // Welcome bonus - 2 free credits for new users
+      createdAt: DateTime.now(),
+      lastLogin: DateTime.now(),
+    );
+
+    await _firestore
+        .collection('users')
+        .doc(userCredential.user!.uid)
+        .set(userModel.toFirestore());
+
+    // Create welcome bonus transaction
+    await _firestore.collection('transactions').add({
+      'userId': userCredential.user!.uid,
+      'type': 'bonus',
+      'credits': 2,
+      'description': 'Welcome bonus credits - Phone OTP',
+      'createdAt': Timestamp.now(),
+    });
+
+    return userModel;
   }
 }

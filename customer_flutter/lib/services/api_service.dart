@@ -1,12 +1,17 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:crypto/crypto.dart';
 
 class ApiService {
   // Change this to your backend URL
-  static const String baseUrl = 'https://dukasell.vercel.app/api'; // Production Vercel
+  static const String baseUrl =
+      'https://dukasell.vercel.app/api'; // Production Vercel
+  // Singleton pattern
+  static final ApiService _instance = ApiService._internal();
+
   // static const String baseUrl = 'http://10.0.2.2:5000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:5000/api'; // iOS simulator
 
@@ -14,25 +19,27 @@ class ApiService {
 
   // Image cache: hash -> processed image URL
   final Map<String, String> _imageCache = {};
-
-  // Singleton pattern
-  static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  // Get stored auth token
-  Future<String?> getToken() async {
-    if (_authToken != null) return _authToken;
-    final prefs = await SharedPreferences.getInstance();
-    _authToken = prefs.getString('auth_token');
-    return _authToken;
+  // Store processed image in cache
+  void cacheProcessedImage(String imageHash, String processedUrl) {
+    _imageCache[imageHash] = processedUrl;
   }
 
-  // Store auth token
-  Future<void> setToken(String token) async {
-    _authToken = token;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
+  // Check payment status
+  Future<Map<String, dynamic>> checkPaymentStatus(String orderReference) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/transactions?orderReference=$orderReference'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to check payment status');
+    }
   }
 
   // Clear auth token (logout)
@@ -42,89 +49,189 @@ class ApiService {
     await prefs.remove('auth_token');
   }
 
-  // Test internet connection
-  Future<Map<String, dynamic>> testConnection() async {
-    try {
-      // Try to reach a reliable endpoint (Google DNS or your backend)
-      final response = await http.get(
-        Uri.parse('https://www.google.com'),
-        headers: {'User-Agent': 'DukaSell-App/1.0'},
-      ).timeout(const Duration(seconds: 5));
-      
-      return {
-        'success': response.statusCode == 200,
-        'status_code': response.statusCode,
-      };
-    } catch (e) {
+  // Create ClickPesa payment request
+  Future<Map<String, dynamic>> createPayment({
+    required String packageId,
+    String? phoneNumber,
+    required String paymentMethod,
+  }) async {
+    // Ensure token is available
+    final token = await getToken();
+    if (token == null) {
       return {
         'success': false,
-        'error': e.toString(),
+        'error': 'Authentication required. Please log in again.',
       };
     }
-  }
 
-  // Get headers with auth token
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await getToken();
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    return headers;
-  }
-
-  // ============================================
-  // AUTH ENDPOINTS
-  // ============================================
-
-  Future<Map<String, dynamic>> register({
-    required String name,
-    required String phone,
-    required String countryCode,
-  }) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/auth/register'),
+      Uri.parse('$baseUrl/credits/create-payment'),
       headers: await _getHeaders(),
       body: jsonEncode({
-        'name': name,
-        'phone': '$countryCode$phone',
-      }),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      if (data['token'] != null) {
-        await setToken(data['token']);
-      }
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Registration failed');
-    }
-  }
-
-  Future<Map<String, dynamic>> verifyOtp({
-    required String phone,
-    required String otp,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/verify-otp'),
-      headers: await _getHeaders(),
-      body: jsonEncode({
-        'phone': phone,
-        'otp': otp,
+        'packageId': packageId,
+        'phoneNumber': phoneNumber,
+        'paymentMethod': paymentMethod,
       }),
     );
 
     final data = jsonDecode(response.body);
     if (response.statusCode == 200) {
-      if (data['token'] != null) {
-        await setToken(data['token']);
-      }
       return data;
     } else {
-      throw Exception(data['error'] ?? 'OTP verification failed');
+      throw Exception(data['error'] ?? 'Failed to create payment');
+    }
+  }
+
+  // Deduct credit for cached image
+  Future<Map<String, dynamic>> deductCredit() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credits/deduct'),
+      headers: await _getHeaders(),
+      body: jsonEncode({'amount': 1}),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to deduct credit');
+    }
+  }
+
+  Future<Map<String, dynamic>> downloadPhoto(String photoId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/photos/download/$photoId'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to download photo');
+    }
+  }
+
+  // Get bank details
+  Future<Map<String, dynamic>> getBankDetails() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/bank-details'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get bank details');
+    }
+  }
+
+  // Check if image is cached
+  String? getCachedProcessedUrl(String imageHash) {
+    return _imageCache[imageHash];
+  }
+
+  // ============================================
+  // CREDITS ENDPOINTS
+  // ============================================
+
+  Future<Map<String, dynamic>> getCredits() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/balance'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get credits');
+    }
+  }
+
+  // Get exchange rate
+  Future<Map<String, dynamic>> getExchangeRate() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/credits/exchange-rate'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get exchange rate');
+    }
+  }
+
+  // Get full URL for images
+  String getImageUrl(String path) {
+    if (path.startsWith('http')) return path;
+    return '${baseUrl.replaceAll('/api', '')}/$path';
+  }
+
+  Future<List<Map<String, dynamic>>> getPhotoHistory() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/photos/history'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(data['photos'] ?? []);
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get photo history');
+    }
+  }
+
+  Future<Map<String, dynamic>> getProfile() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/auth/profile'),
+      headers: await _getHeaders(),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to get profile');
+    }
+  }
+
+  // Get stored auth token
+  Future<String?> getToken() async {
+    if (_authToken != null) return _authToken;
+    final prefs = await SharedPreferences.getInstance();
+    _authToken = prefs.getString('auth_token');
+    return _authToken;
+  }
+
+  // Validate token exists
+  Future<bool> hasValidToken() async {
+    final token = await getToken();
+    return token != null && token.isNotEmpty;
+  }
+
+  // Initiate ClickPesa USSD payment
+  Future<Map<String, dynamic>> initiatePayment({
+    required String orderReference,
+    required String phoneNumber,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/credits/initiate-payment'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'orderReference': orderReference,
+        'phoneNumber': phoneNumber,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to initiate payment');
     }
   }
 
@@ -152,46 +259,12 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> getProfile() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/auth/profile'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to get profile');
-    }
-  }
-
-  // ============================================
-  // IMAGE CACHING
-  // ============================================
-
-  // Generate hash for image file
-  Future<String> _generateImageHash(File imageFile) async {
-    final bytes = await imageFile.readAsBytes();
-    final digest = md5.convert(bytes);
-    return digest.toString();
-  }
-
-  // Check if image is cached
-  String? getCachedProcessedUrl(String imageHash) {
-    return _imageCache[imageHash];
-  }
-
-  // Store processed image in cache
-  void cacheProcessedImage(String imageHash, String processedUrl) {
-    _imageCache[imageHash] = processedUrl;
-  }
-
   // ============================================
   // PHOTO ENDPOINTS
   // ============================================
 
-  Future<Map<String, dynamic>> processPhoto(File imageFile, {bool checkCache = true}) async {
+  Future<Map<String, dynamic>> processPhoto(File imageFile,
+      {bool checkCache = true}) async {
     // Generate hash for duplicate detection
     final imageHash = await _generateImageHash(imageFile);
 
@@ -246,89 +319,22 @@ class ApiService {
     }
   }
 
-  // Deduct credit for cached image
-  Future<Map<String, dynamic>> deductCredit() async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/credits/deduct'),
-      headers: await _getHeaders(),
-      body: jsonEncode({'amount': 1}),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to deduct credit');
-    }
-  }
-
-  Future<Map<String, dynamic>> downloadPhoto(String photoId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/photos/download/$photoId'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to download photo');
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getPhotoHistory() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/photos/history'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return List<Map<String, dynamic>>.from(data['photos'] ?? []);
-    } else {
-      throw Exception(data['error'] ?? 'Failed to get photo history');
-    }
-  }
-
-  // ============================================
-  // CREDITS ENDPOINTS
-  // ============================================
-
-  Future<Map<String, dynamic>> getCredits() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/credits/balance'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to get credits');
-    }
-  }
-
-  // Create ClickPesa payment request
-  Future<Map<String, dynamic>> createPayment({
+  // Legacy method for backward compatibility
+  Future<Map<String, dynamic>> purchaseCredits({
     required String packageId,
-    String? phoneNumber,
     required String paymentMethod,
   }) async {
-    // Ensure token is available
-    final token = await getToken();
-    if (token == null) {
-      return {
-        'success': false,
-        'error': 'Authentication required. Please log in again.',
-      };
+    if (paymentMethod == 'clickpesa') {
+      // Return error - phone number required for ClickPesa
+      throw Exception('Phone number required for ClickPesa payment');
     }
 
+    // Fallback to other payment methods
     final response = await http.post(
-      Uri.parse('$baseUrl/credits/create-payment'),
+      Uri.parse('$baseUrl/credits/purchase'),
       headers: await _getHeaders(),
       body: jsonEncode({
         'packageId': packageId,
-        'phoneNumber': phoneNumber,
         'paymentMethod': paymentMethod,
       }),
     );
@@ -337,44 +343,36 @@ class ApiService {
     if (response.statusCode == 200) {
       return data;
     } else {
-      throw Exception(data['error'] ?? 'Failed to create payment');
+      throw Exception(data['error'] ?? 'Failed to purchase credits');
     }
   }
 
-  // Initiate ClickPesa USSD payment
-  Future<Map<String, dynamic>> initiatePayment({
-    required String orderReference,
-    required String phoneNumber,
+  // ============================================
+  // AUTH ENDPOINTS
+  // ============================================
+
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String phone,
+    required String countryCode,
   }) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/credits/initiate-payment'),
+      Uri.parse('$baseUrl/auth/register'),
       headers: await _getHeaders(),
       body: jsonEncode({
-        'orderReference': orderReference,
-        'phoneNumber': phoneNumber,
+        'name': name,
+        'phone': '$countryCode$phone',
       }),
     );
 
     final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      if (data['token'] != null) {
+        await setToken(data['token']);
+      }
       return data;
     } else {
-      throw Exception(data['error'] ?? 'Failed to initiate payment');
-    }
-  }
-
-  // Check payment status
-  Future<Map<String, dynamic>> checkPaymentStatus(String orderReference) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/credits/transactions?orderReference=$orderReference'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to check payment status');
+      throw Exception(data['error'] ?? 'Registration failed');
     }
   }
 
@@ -404,67 +402,78 @@ class ApiService {
     }
   }
 
-  // Get bank details
-  Future<Map<String, dynamic>> getBankDetails() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/credits/bank-details'),
-      headers: await _getHeaders(),
-    );
+  // Store auth token
+  Future<void> setToken(String token) async {
+    _authToken = token;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+  }
 
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to get bank details');
+  // Test internet connection
+  Future<Map<String, dynamic>> testConnection() async {
+    try {
+      // Try to reach a reliable endpoint (Google DNS or your backend)
+      final response = await http.get(
+        Uri.parse('https://www.google.com'),
+        headers: {'User-Agent': 'DukaSell-App/1.0'},
+      ).timeout(const Duration(seconds: 5));
+
+      return {
+        'success': response.statusCode == 200,
+        'status_code': response.statusCode,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
     }
   }
 
-  // Get exchange rate
-  Future<Map<String, dynamic>> getExchangeRate() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/credits/exchange-rate'),
-      headers: await _getHeaders(),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      return data;
-    } else {
-      throw Exception(data['error'] ?? 'Failed to get exchange rate');
-    }
-  }
-
-  // Legacy method for backward compatibility
-  Future<Map<String, dynamic>> purchaseCredits({
-    required String packageId,
-    required String paymentMethod,
+  Future<Map<String, dynamic>> verifyOtp({
+    required String phone,
+    required String otp,
   }) async {
-    if (paymentMethod == 'clickpesa') {
-      // Return error - phone number required for ClickPesa
-      throw Exception('Phone number required for ClickPesa payment');
-    }
-    
-    // Fallback to other payment methods
     final response = await http.post(
-      Uri.parse('$baseUrl/credits/purchase'),
+      Uri.parse('$baseUrl/auth/verify-otp'),
       headers: await _getHeaders(),
       body: jsonEncode({
-        'packageId': packageId,
-        'paymentMethod': paymentMethod,
+        'phone': phone,
+        'otp': otp,
       }),
     );
 
     final data = jsonDecode(response.body);
     if (response.statusCode == 200) {
+      if (data['token'] != null) {
+        await setToken(data['token']);
+      }
       return data;
     } else {
-      throw Exception(data['error'] ?? 'Failed to purchase credits');
+      throw Exception(data['error'] ?? 'OTP verification failed');
     }
   }
 
-  // Get full URL for images
-  String getImageUrl(String path) {
-    if (path.startsWith('http')) return path;
-    return '${baseUrl.replaceAll('/api', '')}/$path';
+  // ============================================
+  // IMAGE CACHING
+  // ============================================
+
+  // Generate hash for image file
+  Future<String> _generateImageHash(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    final digest = md5.convert(bytes);
+    return digest.toString();
+  }
+
+  // Get headers with auth token
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await getToken();
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 }

@@ -210,6 +210,10 @@ class AccountScreen extends StatelessWidget {
             Navigator.pushNamed(context, '/notifications');
           }),
           const Divider(height: 1, indent: 64, color: AppTheme.border),
+          _buildAccountItem(Icons.account_circle_outlined, 'Link Google Account', AppTheme.iconBgBlue, () {
+            _showLinkGoogleDialog(context);
+          }),
+          const Divider(height: 1, indent: 64, color: AppTheme.border),
           _buildAccountItem(Icons.help_outline, 'Help & Support', AppTheme.iconBgGreen, () {
             // Navigator.pushNamed(context, '/help');
           }),
@@ -293,5 +297,65 @@ class AccountScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _showLinkGoogleDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Link Google Account', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('By linking your Google account, you can sign in faster and have a backup way to access your account.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _handleLinkGoogle(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            child: const Text('Link Google'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleLinkGoogle(BuildContext context) async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+
+    try {
+      final success = await auth.linkGoogleAccount();
+
+      if (context.mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Google account linked successfully!'),
+              backgroundColor: AppTheme.accentGreen,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else if (auth.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Error: ${auth.error}'),
+              backgroundColor: AppTheme.error,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          auth.clearError();
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
   }
 }

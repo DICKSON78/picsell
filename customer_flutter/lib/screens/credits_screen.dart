@@ -506,6 +506,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
     final localization =
         Provider.of<LocalizationProvider>(context, listen: false);
     final isSwahili = localization.isSwahili;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
 
     try {
       if (mounted) {
@@ -513,6 +514,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
           _isProcessing = true;
         });
       }
+
+      // Refresh token before making payment
+      await auth.refreshToken();
 
       // Check if user is authenticated
       final token = await _apiService.getToken();
