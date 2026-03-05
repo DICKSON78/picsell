@@ -54,24 +54,31 @@ class ApiService {
     required String packageId,
     String? phoneNumber,
     required String paymentMethod,
+    String? payerName,
+    String? otp,
   }) async {
-    // Ensure token is available
+    // Token is optional - can be authenticated or use OTP
     final token = await getToken();
-    if (token == null) {
-      return {
-        'success': false,
-        'error': 'Authentication required. Please log in again.',
-      };
+
+    final body = {
+      'packageId': packageId,
+      'phoneNumber': phoneNumber,
+      'paymentMethod': paymentMethod,
+      'payerName': payerName,
+    };
+
+    // Add OTP if provided (for unauthenticated users)
+    if (otp != null) {
+      body['otp'] = otp;
     }
 
     final response = await http.post(
       Uri.parse('$baseUrl/credits/create-payment'),
-      headers: await _getHeaders(),
-      body: jsonEncode({
-        'packageId': packageId,
-        'phoneNumber': phoneNumber,
-        'paymentMethod': paymentMethod,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
     );
 
     final data = jsonDecode(response.body);
@@ -376,6 +383,24 @@ class ApiService {
     }
   }
 
+  // Request OTP for phone number
+  Future<Map<String, dynamic>> requestOTP(String phoneNumber) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/otp/request'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'phoneNumber': phoneNumber,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Failed to request OTP');
+    }
+  }
+
   // Save bank details
   Future<Map<String, dynamic>> saveBankDetails({
     required String accountNumber,
@@ -427,6 +452,28 @@ class ApiService {
         'success': false,
         'error': e.toString(),
       };
+    }
+  }
+
+  // Verify OTP
+  Future<Map<String, dynamic>> verifyOTP({
+    required String phoneNumber,
+    required String otp,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/otp/verify'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'phoneNumber': phoneNumber,
+        'otp': otp,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Invalid OTP');
     }
   }
 

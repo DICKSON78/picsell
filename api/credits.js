@@ -4,6 +4,9 @@ const cors = require('cors');
 // Firebase Admin
 const admin = require('firebase-admin');
 
+// Import ClickPesa Service
+const clickpesaService = require('../backend/src/services/clickpesaService');
+
 // Initialize Firebase
 if (!admin.apps.length) {
   admin.initializeApp({

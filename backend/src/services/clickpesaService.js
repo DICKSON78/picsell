@@ -15,17 +15,35 @@ class ClickPesaService {
   // Generate JWT token for API authentication
   async generateToken() {
     try {
-      const response = await axios.post(
-        `${this.baseUrl}/generate-token`,
-        {},
-        {
-          headers: {
-            "api-key": this.apiKey,
-            "client-id": this.clientId,
-            "Content-Type": "application/json",
+      // Try alternative endpoint first
+      let response;
+      try {
+        response = await axios.post(
+          "https://api.clickpesa.com/v1/auth/token",
+          {
+            client_id: this.clientId,
+            api_key: this.apiKey
           },
-        },
-      );
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      } catch (altError) {
+        // Fallback to original endpoint
+        response = await axios.post(
+          `${this.baseUrl}/generate-token`,
+          {},
+          {
+            headers: {
+              "api-key": this.apiKey,
+              "client-id": this.clientId,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
 
       if (response.data.success) {
         // Token already includes "Bearer " prefix, so use it as is

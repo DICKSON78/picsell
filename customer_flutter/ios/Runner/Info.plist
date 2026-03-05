@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Biometric Authentication -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>We need access to Face ID to securely verify your payment</string>
+	<key>NSLocalizedFailureReasonError</key>
+	<array>
+		<string>Biometric verification is required to complete the payment</string>
+	</array>
 </dict>
 </plist>
