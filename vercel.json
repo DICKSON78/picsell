@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/auth-debug.js", 
+      "src": "api/simple-payment.js", 
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/auth-debug",
-      "dest": "/api/auth-debug.js"
+      "src": "/api/simple-payment",
+      "dest": "/api/simple-payment.js"
     }
   ]
 }
